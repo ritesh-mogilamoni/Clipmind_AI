@@ -1,0 +1,48 @@
+http://127.0.0.1:8000/health
+
+###
+### Health check
+GET http://127.0.0.1:8000/health
+
+### DB health check
+GET http://127.0.0.1:8000/health/db
+
+### Signup
+POST http://127.0.0.1:8000/auth/signup
+Content-Type: application/json
+
+{
+  "name": "Ritesh",
+  "email": "ritesh@example.com",
+  "password": "test1234",
+  "role": "content_creator"
+}
+
+### Login
+POST http://127.0.0.1:8000/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=ritesh@example.com&password=test1234
+
+### Get current user (protected route)
+GET http://127.0.0.1:8000/auth/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NjM2MDkyMy1iNDUxLTQxNmUtOGQzYy1kMDQyNWE4ZmQ3MmYiLCJyb2xlIjoiY29udGVudF9jcmVhdG9yIiwiZXhwIjoxNzg1ODQ3ODQ4fQ.PFSjiaTb7hp6cEKnf0dFfUI4RGqmwkaQuV2tK3zJBs0
+
+# ### Get current user - no token (should fail)
+# GET http://127.0.0.1:8000/auth/me
+
+### Upload video
+POST http://127.0.0.1:8000/videos/upload
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NjM2MDkyMy1iNDUxLTQxNmUtOGQzYy1kMDQyNWE4ZmQ3MmYiLCJyb2xlIjoiY29udGVudF9jcmVhdG9yIiwiZXhwIjoxNzg1ODQ3ODQ4fQ.PFSjiaTb7hp6cEKnf0dFfUI4RGqmwkaQuV2tK3zJBs0
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="title"
+
+My Test Video
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="test.mp4"
+Content-Type: video/mp4
+
+< C:\Users\rites\Videos\20260608_190658.mp4
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
