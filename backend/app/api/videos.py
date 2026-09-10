@@ -116,6 +116,11 @@ def import_video_url(
             'outtmpl': outtmpl,
             'format': 'bestvideo+bestaudio/best',
             'merge_output_format': 'mp4',
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['ios', 'android', 'tv', 'web']
+                }
+            },
             'quiet': True,
             'no_warnings': True,
         }
