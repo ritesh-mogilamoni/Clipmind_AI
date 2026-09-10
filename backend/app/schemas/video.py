@@ -5,6 +5,16 @@ from typing import Optional
 from app.db.models import VideoStatus
 
 
+from typing import Optional, List, Any
+
+class URLImportRequest(BaseModel):
+    url: str
+    title: Optional[str] = None
+
+class TranscriptUpdate(BaseModel):
+    transcript_text: str
+    segments: Optional[List[Any]] = None
+
 class VideoResponse(BaseModel):
     id: UUID
     title: str
@@ -13,6 +23,13 @@ class VideoResponse(BaseModel):
     format: Optional[str]
     file_size_bytes: Optional[int]
     status: VideoStatus
+    transcript_text: Optional[str] = None
+    transcript_segments: Optional[List[Any]] = None
+    short_summary: Optional[str] = None
+    detailed_summary: Optional[str] = None
+    key_moments: Optional[List[Any]] = None
+    keywords: Optional[List[str]] = None
+    language: Optional[str] = None
     created_at: datetime
 
     class Config:

@@ -1,3 +1,5 @@
+"use client";
+
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { authApi } from "../api/client";
 
@@ -5,10 +7,22 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem("clipmind_token"));
+  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch current user details on mount if token exists
+  // Initialize token from localStorage safely on client mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const storedToken = localStorage.getItem("clipmind_token");
+      if (storedToken) {
+        setToken(storedToken);
+      } else {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  // Fetch current user details when token changes
   useEffect(() => {
     const loadUser = async () => {
       if (token) {
@@ -22,12 +36,17 @@ export const AuthProvider = ({ children }) => {
       }
       setLoading(false);
     };
-    loadUser();
+
+    if (token) {
+      loadUser();
+    }
   }, [token]);
 
   const login = async (email, password) => {
     const data = await authApi.login(email, password);
-    localStorage.setItem("clipmind_token", data.access_token);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("clipmind_token", data.access_token);
+    }
     setToken(data.access_token);
     const userData = await authApi.getCurrentUser();
     setUser(userData);
@@ -36,13 +55,14 @@ export const AuthProvider = ({ children }) => {
 
   const signup = async (userData) => {
     const newUser = await authApi.signup(userData);
-    // After signup, automatically log in the user
     await login(userData.email, userData.password);
     return newUser;
   };
 
   const logout = () => {
-    localStorage.removeItem("clipmind_token");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("clipmind_token");
+    }
     setToken(null);
     setUser(null);
   };

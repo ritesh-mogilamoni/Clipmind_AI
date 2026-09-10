@@ -1,16 +1,39 @@
-# React + Vite
+# ClipMind AI - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This directory contains the **Next.js 15 (App Router)** frontend application for ClipMind AI, built with React 19 and styled with Tailwind CSS v4 featuring the Crystal Glass & Frosted Obsidian design system.
 
-Currently, two official plugins are available:
+## Getting Started
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### Install Dependencies
 
-## React Compiler
+```bash
+npm install
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Start Development Server
 
-## Expanding the ESLint configuration
+```bash
+npm run dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+The application will run at `http://localhost:3000`.
+
+### Build & Run for Production
+
+```bash
+# Build the optimized production application
+npm run build
+
+# Start the Next.js production server
+npm run start
+```
+
+---
+
+## Route Architecture (App Router)
+
+- **Public Landing Page**: `/` (`src/app/page.jsx`)
+- **Authentication**:
+  - Sign In: `/login` (`src/app/login/page.jsx`)
+  - Register: `/signup` (`src/app/signup/page.jsx`)
+- **Intelligence Studio Dashboard**: `/dashboard` (`src/app/dashboard/page.jsx`) featuring video uploads, AI processing triggers, interactive timestamp seeking, transcript editor, key moments navigator, and analytics.

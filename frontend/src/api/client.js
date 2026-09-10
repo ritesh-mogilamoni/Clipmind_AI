@@ -1,24 +1,24 @@
 import axios from "axios";
 
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
-// Interceptor to inject JWT token into authorization header
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("clipmind_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("clipmind_token");
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Helper API functions
 export const authApi = {
   signup: async (userData) => {
     const response = await api.post("/auth/signup", userData);
@@ -40,6 +40,10 @@ export const authApi = {
 };
 
 export const videosApi = {
+  importVideoUrl: async (url, title) => {
+    const response = await api.post("/videos/import-url", { url, title });
+    return response.data;
+  },
   uploadVideo: async (title, file, onUploadProgress) => {
     const formData = new FormData();
     formData.append("title", title);
@@ -57,6 +61,52 @@ export const videosApi = {
   },
   getVideo: async (id) => {
     const response = await api.get(`/videos/${id}`);
+    return response.data;
+  },
+  getVideoFileUrl: (id) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("clipmind_token") : "";
+    return `${API_BASE_URL}/videos/${id}/file?token=${token}`;
+  },
+  processVideo: async (id) => {
+    const response = await api.post(`/videos/${id}/process`);
+    return response.data;
+  },
+  updateTranscript: async (id, transcript_text, segments) => {
+    const response = await api.put(`/videos/${id}/transcript`, {
+      transcript_text,
+      segments,
+    });
+    return response.data;
+  },
+  exportVideo: async (id, format = "txt") => {
+    if (format === "json") {
+      const response = await api.get(`/videos/${id}/export?format=json`);
+      return response.data;
+    }
+    const response = await api.get(`/videos/${id}/export?format=txt`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+  deleteVideo: async (id) => {
+    const response = await api.delete(`/videos/${id}`);
+    return response.data;
+  },
+  bookmarkVideo: async (id, note) => {
+    const formData = new FormData();
+    if (note) formData.append("note", note);
+    const response = await api.post(`/videos/${id}/bookmark`, formData);
+    return response.data;
+  },
+};
+
+export const analyticsApi = {
+  getDashboardStats: async () => {
+    const response = await api.get("/analytics/dashboard");
+    return response.data;
+  },
+  getAdminUserStats: async () => {
+    const response = await api.get("/analytics/admin/users");
     return response.data;
   },
 };

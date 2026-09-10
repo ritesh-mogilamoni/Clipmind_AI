@@ -2,11 +2,13 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str
-    mongo_uri: str
     jwt_secret: str
     jwt_algorithm: str = "HS256"
+    openai_api_key: str | None = None
+    groq_api_key: str | None = None
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 settings = Settings()

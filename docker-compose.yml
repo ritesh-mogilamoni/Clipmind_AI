@@ -1,25 +1,57 @@
 version: "3.9"
+
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     container_name: clipmind_postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: clipmind
-      POSTGRES_PASSWORD: clipmind
-      POSTGRES_DB: clipmind_db
+      POSTGRES_USER: ${POSTGRES_USER:-clipmind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clipmind}
+      POSTGRES_DB: ${POSTGRES_DB:-clipmind_db}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clipmind -d clipmind_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  mongo:
-    image: mongo:7
-    container_name: clipmind_mongo
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: clipmind_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-clipmind}:${POSTGRES_PASSWORD:-clipmind}@postgres:5432/${POSTGRES_DB:-clipmind_db}
+      JWT_SECRET: ${JWT_SECRET:-change_this_jwt_secret_key_for_production}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
-      - "27017:27017"
+      - "8000:8000"
     volumes:
-      - mongodata:/data/db
+      - uploads_data:/app/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: clipmind_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
 
 volumes:
   pgdata:
-  mongodata:
+  uploads_data:
