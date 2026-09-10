@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+import re
 from sqlalchemy import text
 from app.db.postgres import engine
 from app.db.models import Base
@@ -14,6 +15,13 @@ except Exception as _db_init_err:
     logging.getLogger(__name__).warning(f"Could not auto-create tables on startup: {_db_init_err}")
 
 app = FastAPI(title="ClipMind AI")
+
+@app.middleware("http")
+async def normalize_double_slashes(request: Request, call_next):
+    raw_path = request.scope.get("path", "")
+    if "//" in raw_path:
+        request.scope["path"] = re.sub(r"/+", "/", raw_path)
+    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,
