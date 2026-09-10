@@ -106,6 +106,7 @@ def import_video_url(
     downloaded_file = None
     extracted_title = body.title or ""
 
+    yt_err_msg = None
     # Attempt yt-dlp first for YouTube, Vimeo, social, and video stream links
     try:
         import yt_dlp
@@ -113,7 +114,7 @@ def import_video_url(
         outtmpl = os.path.join(UPLOAD_DIR, f"{unique_id}.%(ext)s")
         ydl_opts = {
             'outtmpl': outtmpl,
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'format': 'bestvideo+bestaudio/best',
             'merge_output_format': 'mp4',
             'quiet': True,
             'no_warnings': True,
@@ -129,6 +130,7 @@ def import_video_url(
                     downloaded_file = os.path.join(UPLOAD_DIR, fname)
                     break
     except Exception as yt_err:
+        yt_err_msg = str(yt_err)
         logger.warning(f"yt-dlp import notice: {yt_err}")
 
     # Fallback to direct HTTP media file download ONLY for direct media file URLs (.mp4, .mov, .webm, etc.)
@@ -156,7 +158,7 @@ def import_video_url(
         else:
             raise HTTPException(
                 status_code=400,
-                detail="Could not extract video stream from the provided link. Please ensure the link is a valid public video URL."
+                detail=f"Could not extract video stream from the link: {yt_err_msg or 'Please ensure the link is a valid public video URL.'}"
             )
 
     file_size = os.path.getsize(downloaded_file)
