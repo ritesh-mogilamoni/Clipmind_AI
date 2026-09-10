@@ -988,24 +988,33 @@ export default function DashboardPage() {
                           ⚠️
                         </div>
                         <div className="text-xs font-semibold text-slate-200">
-                          Video File Not Found on Cloud Server
+                          Video Playback Error
                         </div>
                         <p className="text-[11px] text-slate-400 max-w-xs leading-relaxed">
-                          The transcripts and AI summary exist in your Neon database, but the underlying video file was uploaded on your local computer and was not uploaded to Render.
+                          Unable to stream this video file from the server.
                         </p>
-                        <p className="text-[11px] text-cyan-400 font-medium pt-1">
-                          Upload or import a new video using the button above to stream directly!
-                        </p>
+                        <a
+                          href={videosApi.getVideoFileUrl(selectedVideo.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] text-cyan-400 hover:text-cyan-300 underline font-mono inline-block pt-1"
+                        >
+                          Click here to open video directly in new tab ↗
+                        </a>
                       </div>
                     ) : (
                       <video
+                        key={selectedVideo.id}
                         ref={videoRef}
                         controls
                         playsInline
                         preload="metadata"
                         className="w-full h-full object-contain rounded-lg"
                         src={videosApi.getVideoFileUrl(selectedVideo.id)}
-                        onError={() => setVideoError(true)}
+                        onError={(e) => {
+                          console.error("Video load error:", videoRef.current?.error, videoRef.current?.src);
+                          setVideoError(true);
+                        }}
                         onLoadedData={() => setVideoError(false)}
                       />
                     )}

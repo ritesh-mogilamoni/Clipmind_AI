@@ -299,13 +299,11 @@ def get_video_file(
             "Accept-Ranges": "bytes",
             "Content-Length": str(content_length),
             "Content-Type": media_type,
-            "Access-Control-Allow-Origin": "*",
         }
         return StreamingResponse(iterfile(), status_code=206, headers=headers)
 
     headers = {
         "Accept-Ranges": "bytes",
-        "Access-Control-Allow-Origin": "*",
     }
     return FileResponse(file_path, media_type=media_type, filename=video.original_filename, headers=headers)
 
