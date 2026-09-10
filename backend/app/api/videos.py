@@ -2,8 +2,9 @@ import os
 import shutil
 import uuid
 import logging
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Response, Query
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Response, Query, Request
+from fastapi.responses import FileResponse, StreamingResponse
+import re
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
@@ -233,18 +234,80 @@ import mimetypes
 @router.get("/{video_id}/file")
 def get_video_file(
     video_id: uuid.UUID,
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    """Stream video file for HTML5 video player."""
+    """Stream video file for HTML5 video player with HTTP Range (seeking) support."""
     video = db.query(Video).filter(Video.id == video_id).first()
-    if not video or not os.path.exists(video.storage_path):
-        raise HTTPException(status_code=404, detail="Video file not found")
-    
-    media_type, _ = mimetypes.guess_type(video.storage_path)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video record not found")
+
+    # Locate actual file on disk (handling cross-platform Windows/Linux path separators)
+    file_path = video.storage_path
+    if not os.path.exists(file_path):
+        normalized_name = os.path.basename(video.storage_path.replace("\\", "/"))
+        candidate = os.path.join(UPLOAD_DIR, normalized_name)
+        if os.path.exists(candidate):
+            file_path = candidate
+
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=404,
+            detail="Video file not found on server disk. (If this video was uploaded locally or in a previous session, please upload it directly via this deployed site)."
+        )
+
+    media_type, _ = mimetypes.guess_type(file_path)
     if not media_type:
         media_type = "video/mp4"
 
-    return FileResponse(video.storage_path, media_type=media_type, filename=video.original_filename)
+    file_size = os.path.getsize(file_path)
+    range_header = request.headers.get("range")
+
+    if range_header:
+        byte_start = 0
+        byte_end = None
+        match = re.search(r"bytes=(\d+)-(\d*)", range_header)
+        if match:
+            groups = match.groups()
+            byte_start = int(groups[0])
+            if groups[1]:
+                byte_end = int(groups[1])
+
+        # 2MB chunks for smooth, fast seeking
+        chunk_size = 2 * 1024 * 1024
+        if byte_end is None:
+            byte_end = min(byte_start + chunk_size, file_size - 1)
+        else:
+            byte_end = min(byte_end, file_size - 1)
+
+        content_length = byte_end - byte_start + 1
+
+        def iterfile():
+            with open(file_path, "rb") as f:
+                f.seek(byte_start)
+                remaining = content_length
+                while remaining > 0:
+                    read_size = min(64 * 1024, remaining)
+                    chunk = f.read(read_size)
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    yield chunk
+
+        headers = {
+            "Content-Range": f"bytes {byte_start}-{byte_end}/{file_size}",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(content_length),
+            "Content-Type": media_type,
+            "Access-Control-Allow-Origin": "*",
+        }
+        return StreamingResponse(iterfile(), status_code=206, headers=headers)
+
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Access-Control-Allow-Origin": "*",
+    }
+    return FileResponse(file_path, media_type=media_type, filename=video.original_filename, headers=headers)
 
 
 @router.post("/{video_id}/process", response_model=VideoResponse)

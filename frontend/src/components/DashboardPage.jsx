@@ -127,6 +127,7 @@ export default function DashboardPage() {
 
   // Resizable Workstation Columns State (Default: Left 25%, Center 50% [wider video playback], Right 25%)
   const [colWidths, setColWidths] = useState({ left: 25, center: 50, right: 25 });
+  const [videoError, setVideoError] = useState(false);
   const isDraggingRef = useRef(null);
   const startXRef = useRef(0);
   const startWidthsRef = useRef(colWidths);
@@ -219,6 +220,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    setVideoError(false);
     const vid = videoRef.current;
     if (!vid) return;
 
@@ -979,13 +981,34 @@ export default function DashboardPage() {
                     <h3 className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">Video Playback</h3>
                   </div>
 
-                  <div className="bg-black/90 rounded-lg overflow-hidden flex-1 min-h-0 flex items-center justify-center border border-white/10 shadow-inner">
-                    <video
-                      ref={videoRef}
-                      controls
-                      className="w-full h-full object-contain rounded-lg"
-                      src={videosApi.getVideoFileUrl(selectedVideo.id)}
-                    />
+                  <div className="bg-black/90 rounded-lg overflow-hidden flex-1 min-h-0 flex items-center justify-center border border-white/10 shadow-inner relative">
+                    {videoError ? (
+                      <div className="p-6 text-center flex flex-col items-center justify-center space-y-2.5">
+                        <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-lg">
+                          ⚠️
+                        </div>
+                        <div className="text-xs font-semibold text-slate-200">
+                          Video File Not Found on Cloud Server
+                        </div>
+                        <p className="text-[11px] text-slate-400 max-w-xs leading-relaxed">
+                          The transcripts and AI summary exist in your Neon database, but the underlying video file was uploaded on your local computer and was not uploaded to Render.
+                        </p>
+                        <p className="text-[11px] text-cyan-400 font-medium pt-1">
+                          Upload or import a new video using the button above to stream directly!
+                        </p>
+                      </div>
+                    ) : (
+                      <video
+                        ref={videoRef}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="w-full h-full object-contain rounded-lg"
+                        src={videosApi.getVideoFileUrl(selectedVideo.id)}
+                        onError={() => setVideoError(true)}
+                        onLoadedData={() => setVideoError(false)}
+                      />
+                    )}
                   </div>
                 </div>
 
