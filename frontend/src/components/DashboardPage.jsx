@@ -613,7 +613,23 @@ export default function DashboardPage() {
                       : "text-slate-300 hover:text-white hover:bg-white/[0.08]"
                   }`}
                 >
-                  Analytics
+                  {user?.role === "administrator" ? "Analytics & Admin" : "Analytics"}
+                </button>
+              )}
+
+              {user?.role === "administrator" && (
+                <button
+                  onClick={() => {
+                    fetchAnalytics();
+                    fetchAdminJobs();
+                    setActiveTab("analytics");
+                    setTimeout(() => {
+                      document.getElementById("admin-management")?.scrollIntoView({ behavior: "smooth" });
+                    }, 100);
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-purple-300 hover:text-white hover:bg-purple-500/20 border border-purple-500/30 transition-all duration-200"
+                >
+                  Admin & Roles ⚡
                 </button>
               )}
             </nav>
@@ -1400,7 +1416,23 @@ export default function DashboardPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {user?.role === "administrator" && (
+                  <>
+                    <button
+                      onClick={() => document.getElementById("admin-management")?.scrollIntoView({ behavior: "smooth" })}
+                      className="px-3 py-1.5 glass-panel hover:bg-indigo-500/20 text-indigo-300 rounded-xl text-xs font-mono font-bold border border-indigo-500/30 transition flex items-center gap-1.5 shadow-sm"
+                    >
+                      <span>↓</span> Users & Roles
+                    </button>
+                    <button
+                      onClick={() => document.getElementById("admin-jobs")?.scrollIntoView({ behavior: "smooth" })}
+                      className="px-3 py-1.5 glass-panel hover:bg-purple-500/20 text-purple-300 rounded-xl text-xs font-mono font-bold border border-purple-500/30 transition flex items-center gap-1.5 shadow-sm"
+                    >
+                      <span>↓</span> Jobs Queue
+                    </button>
+                  </>
+                )}
                 <button
                   onClick={fetchAnalytics}
                   className="glass-button-primary px-4 py-2 text-white rounded-xl text-xs font-bold shrink-0 flex items-center gap-2"
@@ -1408,7 +1440,7 @@ export default function DashboardPage() {
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Refresh Analytics
+                  Refresh
                 </button>
               </div>
             </div>
@@ -1994,7 +2026,7 @@ export default function DashboardPage() {
 
             {/* TIER 5: ADMINISTRATOR USER MANAGEMENT & SYSTEM HEALTH */}
             {user?.role === "administrator" && (
-              <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-5">
+              <div id="admin-management" className="glass-card p-6 sm:p-7 rounded-2xl space-y-5 scroll-mt-24">
                 <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
                   <div>
                     <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
@@ -2062,7 +2094,7 @@ export default function DashboardPage() {
 
             {/* TIER 5B: ADMINISTRATOR AI PROCESSING JOBS QUEUE */}
             {user?.role === "administrator" && (
-              <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-5">
+              <div id="admin-jobs" className="glass-card p-6 sm:p-7 rounded-2xl space-y-5 scroll-mt-24">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
                   <div>
                     <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
