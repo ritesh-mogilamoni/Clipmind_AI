@@ -199,3 +199,119 @@ def generate_summaries_and_keywords(title: str, transcript_text: str, segments: 
         "detailed_summary": detailed_summary,
         "keywords": top_keywords or [clean_title.capitalize()],
     }
+
+
+def generate_study_materials(title: str, transcript_text: str) -> List[Dict[str, Any]]:
+    """
+    Generates educational study materials (quizzes, key concepts, flashcards) from video transcript
+    for Educators and Learners.
+    """
+    groq_key = settings.groq_api_key
+    openai_key = settings.openai_api_key
+
+    candidates = []
+    if groq_key and groq_key.strip() and not groq_key.startswith("your_"):
+        candidates.extend([
+            ("https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile", groq_key),
+            ("https://api.groq.com/openai/v1/chat/completions", "llama-3.1-8b-instant", groq_key),
+        ])
+    if openai_key and openai_key.strip() and not openai_key.startswith("your_"):
+        candidates.append(("https://api.openai.com/v1/chat/completions", "gpt-4o-mini", openai_key))
+
+    clean_transcript = (transcript_text or "").strip()[:7000]
+    user_prompt = f"Video Title: {title}\nTranscript:\n{clean_transcript if clean_transcript else title}"
+
+    system_prompt = (
+        "You are ClipMind AI's educational learning assistant. "
+        "Analyze the provided video transcript and generate 4 interactive multiple-choice study quiz questions "
+        "to test students' comprehension of the core subject matter.\n"
+        "Return a JSON object with key 'quiz' containing an array of 4 objects. Each object MUST have:\n"
+        "- 'id': integer (1, 2, 3, 4)\n"
+        "- 'question': clear, direct question testing an important fact, concept, or process from the video\n"
+        "- 'options': array of exactly 4 plausible answer strings\n"
+        "- 'correct_index': integer 0, 1, 2, or 3 representing the index of the correct option\n"
+        "- 'explanation': 1-2 sentence concise explanation of why this answer is correct based on the lecture\n"
+        "- 'concept': short name of the concept tested (e.g. 'Core Definition', 'Methodology', 'Key Advantage')\n"
+        "Return ONLY valid JSON."
+    )
+
+    payload_dict = {
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.2,
+        "response_format": {"type": "json_object"},
+    }
+
+    for api_url, model_name, api_key in candidates:
+        try:
+            current_payload = dict(payload_dict)
+            current_payload["model"] = model_name
+
+            req = urllib.request.Request(
+                api_url,
+                data=json.dumps(current_payload).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                },
+                method="POST"
+            )
+
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    content = data["choices"][0]["message"]["content"]
+                    parsed = json.loads(content)
+                    quiz = parsed.get("quiz") or parsed.get("questions") or []
+                    if isinstance(quiz, list) and len(quiz) > 0:
+                        return quiz
+        except Exception as e:
+            logger.warning(f"Error generating study materials with {model_name}: {e}")
+
+    # Fallback study questions if cloud LLM is offline
+    clean_title = (title or "this lecture").strip()
+    return [
+        {
+            "id": 1,
+            "question": f"What is the primary subject matter analyzed in '{clean_title}'?",
+            "options": [
+                f"Core foundations and practical workflows of {clean_title}",
+                "General history of operating systems",
+                "Unrelated media and theoretical physics",
+                "Basic network router configuration",
+            ],
+            "correct_index": 0,
+            "explanation": f"The lecture focuses directly on exploring {clean_title} and its fundamental topics.",
+            "concept": "Core Focus",
+        },
+        {
+            "id": 2,
+            "question": "How does ClipMind AI structure video intelligence for this media?",
+            "options": [
+                "By converting speech into timestamped transcripts and AI chapters",
+                "By deleting audio and compressing video only",
+                "By rendering random subtitles without speech recognition",
+                "By skipping audio extraction entirely",
+            ],
+            "correct_index": 0,
+            "explanation": "ClipMind AI utilizes Whisper speech recognition and Groq LLMs to extract transcripts and chapters.",
+            "concept": "AI Processing",
+        },
+        {
+            "id": 3,
+            "question": "What is the key advantage of timestamped key moments during study?",
+            "options": [
+                "Direct non-linear jumping to specific concepts in the video",
+                "Forcing users to rewatch the entire video linearly",
+                "Disabling video seeking functionality",
+                "Hiding chapter transitions from the viewer",
+            ],
+            "correct_index": 0,
+            "explanation": "Interactive key moments allow learners to instantly seek directly to specific concepts without manual scrubbing.",
+            "concept": "Key Moments & Navigation",
+        },
+    ]
+

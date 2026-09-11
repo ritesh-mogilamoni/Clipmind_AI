@@ -14,7 +14,7 @@ from app.schemas.video import VideoResponse, TranscriptUpdate, URLImportRequest
 from app.core.deps import get_current_user
 from app.services.video_processing import get_video_metadata
 from app.services.transcription import transcribe_video
-from app.services.summarization import generate_summaries_and_keywords
+from app.services.summarization import generate_summaries_and_keywords, generate_study_materials
 from app.services.key_moments import extract_key_moments
 from app.services.cloudinary_service import upload_video_to_cloudinary, is_cloudinary_configured
 
@@ -301,6 +301,49 @@ def delete_bookmark(
     return {"status": "success", "message": "Bookmark removed"}
 
 
+@router.get("/history/me")
+def get_my_study_history(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Retrieves the user's recent video study / view history.
+    """
+    logs = (
+        db.query(ActivityLog)
+        .filter(ActivityLog.user_id == current_user.id)
+        .filter(ActivityLog.action.in_(["study_video", "process_video", "upload_video"]))
+        .order_by(ActivityLog.created_at.desc())
+        .limit(25)
+        .all()
+    )
+
+    seen_ids = set()
+    history = []
+    for log in logs:
+        vid_id = None
+        if isinstance(log.extra_data, dict):
+            vid_id = log.extra_data.get("video_id")
+        if vid_id and vid_id not in seen_ids:
+            seen_ids.add(vid_id)
+            try:
+                v = db.query(Video).filter(Video.id == uuid.UUID(vid_id)).first()
+                if v:
+                    history.append({
+                        "video_id": str(v.id),
+                        "title": v.title,
+                        "action": log.action,
+                        "duration_seconds": v.duration_seconds,
+                        "short_summary": v.short_summary,
+                        "status": v.status.value if hasattr(v.status, "value") else str(v.status),
+                        "timestamp": log.created_at.isoformat() if log.created_at else None,
+                    })
+            except Exception:
+                continue
+
+    return history
+
+
 @router.get("/{video_id}", response_model=VideoResponse)
 def get_video(
     video_id: uuid.UUID,
@@ -452,6 +495,14 @@ def process_video(
             duration_seconds=video.duration_seconds or 0,
         )
         video.key_moments = key_moments
+
+        # Step 4: Study Materials & Quiz Generation
+        try:
+            quiz = generate_study_materials(title=video.title, transcript_text=video.transcript_text)
+            video.study_materials = quiz
+        except Exception as sm_err:
+            logger.warning(f"Notice auto-generating study materials: {sm_err}")
+
         video.status = VideoStatus.completed
         
         # Log Activity
@@ -574,6 +625,54 @@ def bookmark_video(
     db.add(bookmark)
     db.commit()
     return {"status": "bookmarked", "bookmark_id": str(bookmark.id)}
+
+
+@router.post("/{video_id}/study")
+def record_study_activity(
+    video_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Records a learning activity event when a user studies a video.
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    log = ActivityLog(
+        user_id=current_user.id,
+        action="study_video",
+        extra_data={"video_id": str(video.id), "title": video.title},
+    )
+    db.add(log)
+    db.commit()
+    return {"status": "success", "message": "Study activity logged"}
+
+
+@router.post("/{video_id}/study-materials")
+def get_or_generate_study_materials_endpoint(
+    video_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns existing or generates interactive study materials & quiz questions from the video transcript.
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    if video.study_materials and isinstance(video.study_materials, list) and len(video.study_materials) > 0:
+        return {"study_materials": video.study_materials}
+
+    quiz = generate_study_materials(
+        title=video.title,
+        transcript_text=video.transcript_text or video.detailed_summary or video.title,
+    )
+    video.study_materials = quiz
+    db.commit()
+    return {"study_materials": quiz}
 
 
 @router.delete("/{video_id}")

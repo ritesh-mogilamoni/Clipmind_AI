@@ -236,7 +236,16 @@ export default function DashboardPage() {
   const [bookmarks, setBookmarks] = useState([]);
   const [adminJobs, setAdminJobs] = useState([]);
   const [updatingUserRoleId, setUpdatingUserRoleId] = useState(null);
-  const [learnerViewMode, setLearnerViewMode] = useState("library"); // "library" or "bookmarks"
+  const [learnerViewMode, setLearnerViewMode] = useState("library"); // "library", "bookmarks", or "history"
+
+  // Learning History, Study Materials & Profile State
+  const [studyHistory, setStudyHistory] = useState([]);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [studyTab, setStudyTab] = useState("detailed"); // 'detailed' or 'quiz'
+  const [generatingQuiz, setGeneratingQuiz] = useState(false);
+  const [selectedAnswers, setSelectedAnswers] = useState({});
+  const [revealedAnswers, setRevealedAnswers] = useState({});
+  const [shareSuccessToast, setShareSuccessToast] = useState("");
 
   const fetchBookmarks = async () => {
     try {
@@ -244,6 +253,15 @@ export default function DashboardPage() {
       setBookmarks(data);
     } catch (err) {
       console.error("Failed to fetch bookmarks:", err);
+    }
+  };
+
+  const fetchStudyHistory = async () => {
+    try {
+      const data = await videosApi.getStudyHistory();
+      setStudyHistory(data);
+    } catch (err) {
+      console.error("Failed to fetch study history:", err);
     }
   };
 
@@ -285,6 +303,7 @@ export default function DashboardPage() {
     fetchAnalytics();
     fetchBookmarks();
     fetchAdminJobs();
+    fetchStudyHistory();
   }, [user]);
 
   useEffect(() => {
@@ -423,7 +442,50 @@ export default function DashboardPage() {
     setSelectedVideo(video);
     setEditedTranscriptText(video.transcript_text || "");
     setActiveTab("details");
-    setIsBookmarked(false);
+    setIsBookmarked(bookmarks.some((b) => b.video?.id === video.id));
+    setSelectedAnswers({});
+    setRevealedAnswers({});
+    setStudyTab("detailed");
+    videosApi.recordStudy(video.id).then(() => fetchStudyHistory()).catch(() => {});
+  };
+
+  const handleShareWithStudents = () => {
+    if (!selectedVideo) return;
+    const directUrl = typeof window !== "undefined" ? window.location.href : "";
+    const keyMomentsText = (selectedVideo.key_moments || [])
+      .slice(0, 5)
+      .map((km) => `• [${km.timestamp}] ${km.title}: ${km.description || ""}`)
+      .join("\n");
+    const shareText = `📚 LECTURE STUDY GUIDE: ${selectedVideo.title}\n\n` +
+      `📌 Executive Summary:\n${selectedVideo.short_summary || "Summary pending."}\n\n` +
+      `⏱️ Key Chapters:\n${keyMomentsText || "Review transcript for chapters."}\n\n` +
+      `🔗 Study in ClipMind AI Studio: ${directUrl}`;
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(shareText).then(() => {
+        setShareSuccessToast("Lecture study notes copied to clipboard! Ready to share with students.");
+        setTimeout(() => setShareSuccessToast(""), 4500);
+      }).catch(() => {
+        alert("Copied study notes!");
+      });
+    }
+  };
+
+  const handleGenerateStudyQuiz = async () => {
+    if (!selectedVideo) return;
+    setGeneratingQuiz(true);
+    try {
+      const res = await videosApi.getStudyMaterials(selectedVideo.id);
+      if (res && res.study_materials) {
+        const updated = { ...selectedVideo, study_materials: res.study_materials };
+        setSelectedVideo(updated);
+        selectedVideoRef.current = updated;
+      }
+    } catch (err) {
+      alert("Failed to generate study materials: " + (err.response?.data?.detail || err.message));
+    } finally {
+      setGeneratingQuiz(false);
+    }
   };
 
   const handleSaveTranscript = async () => {
@@ -635,12 +697,19 @@ export default function DashboardPage() {
             </nav>
 
             <div className="flex items-center gap-3 border-l border-white/15 pl-4 text-xs">
-              <div className="text-right hidden sm:block">
-                <span className="block font-semibold text-white text-xs">{user?.name}</span>
+              <button
+                onClick={() => setShowProfileModal(true)}
+                className="text-right hidden sm:block hover:opacity-85 transition group text-left"
+                title="View Profile Details"
+              >
+                <span className="block font-semibold text-white text-xs group-hover:text-indigo-300 transition flex items-center gap-1">
+                  {user?.name}
+                  <span className="text-[10px] text-indigo-400">👤</span>
+                </span>
                 <span className="inline-block px-2 py-0.5 text-[9px] font-mono font-bold text-indigo-300 glass-badge rounded uppercase">
                   {user?.role?.replace("_", " ")}
                 </span>
-              </div>
+              </button>
 
               <button
                 onClick={logout}
@@ -653,6 +722,73 @@ export default function DashboardPage() {
 
         </div>
       </header>
+
+      {/* SHARE SUCCESS TOAST */}
+      {shareSuccessToast && (
+        <div className="fixed top-16 right-6 z-50 bg-emerald-600/95 text-white px-5 py-3 rounded-2xl shadow-[0_10px_35px_rgba(16,185,129,0.5)] backdrop-blur-md text-xs font-semibold flex items-center gap-2.5 border border-emerald-400/50 animate-bounce">
+          <span className="w-5 h-5 rounded-full bg-white text-emerald-600 font-bold flex items-center justify-center text-xs">✓</span>
+          <span>{shareSuccessToast}</span>
+        </div>
+      )}
+
+      {/* USER PROFILE MODAL */}
+      {showProfileModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-fade-in">
+          <div className="glass-card max-w-md w-full p-6 sm:p-7 rounded-2xl border border-white/20 shadow-2xl space-y-5 relative">
+            <button
+              onClick={() => setShowProfileModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white text-sm font-bold w-7 h-7 rounded-full bg-white/10 flex items-center justify-center transition"
+            >
+              ✕
+            </button>
+            
+            <div className="flex items-center gap-4 border-b border-white/[0.08] pb-4">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-cyan-400 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-indigo-600/40">
+                {user?.name?.[0]?.toUpperCase() || "U"}
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">{user?.name}</h3>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">{user?.email}</p>
+                <span className="inline-block mt-1.5 px-2.5 py-0.5 text-[9px] font-mono font-bold text-cyan-300 glass-badge rounded uppercase">
+                  {user?.role?.replace("_", " ")}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2.5 text-xs">
+              <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                <span className="text-slate-400">Account Role</span>
+                <span className="font-mono font-bold text-white uppercase">{user?.role?.replace("_", " ")}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                <span className="text-slate-400">User ID</span>
+                <span className="font-mono text-slate-300 text-[11px] truncate max-w-[210px]">{user?.id}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                <span className="text-slate-400">Authentication</span>
+                <span className="text-emerald-400 font-mono font-semibold">JWT Session Active</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                <span className="text-slate-400">Saved Bookmarks</span>
+                <span className="font-mono text-indigo-300 font-bold">{bookmarks.length} saved</span>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-slate-400">Lectures Studied</span>
+                <span className="font-mono text-cyan-300 font-bold">{studyHistory.length} recorded</span>
+              </div>
+            </div>
+
+            <div className="pt-3 flex justify-end">
+              <button
+                onClick={() => setShowProfileModal(false)}
+                className="px-5 py-2 glass-button-primary text-white rounded-xl text-xs font-bold"
+              >
+                Close Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PROCESSING NOTIFICATION BAR */}
       {processMsg && (
@@ -849,6 +985,17 @@ export default function DashboardPage() {
                   >
                     My Bookmarks ({bookmarks.length})
                   </button>
+                  <button
+                    onClick={() => {
+                      setLearnerViewMode("history");
+                      fetchStudyHistory();
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      learnerViewMode === "history" ? "glass-button-primary text-white" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    Study History ({studyHistory.length})
+                  </button>
                 </div>
               </div>
             )}
@@ -913,6 +1060,76 @@ export default function DashboardPage() {
                             className="px-3 py-1.5 glass-button-primary text-white text-xs font-bold rounded-lg uppercase tracking-wider"
                           >
                             Study Now ↗
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : user?.role === "learner" && learnerViewMode === "history" ? (
+              <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-6">
+                <div className="border-b border-white/[0.08] pb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
+                      Recent Learning & Study History ({studyHistory.length})
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Lectures you have recently opened and studied. Click "Resume Study" to continue where you left off.
+                    </p>
+                  </div>
+                  <button
+                    onClick={fetchStudyHistory}
+                    className="glass-button-secondary px-3 py-1.5 rounded-lg text-xs font-mono"
+                  >
+                    Refresh History
+                  </button>
+                </div>
+
+                {studyHistory.length === 0 ? (
+                  <div className="py-16 text-center text-slate-400 text-xs border-2 border-dashed border-white/10 rounded-2xl space-y-2">
+                    <p className="font-bold text-white">No learning history recorded yet.</p>
+                    <p className="text-slate-400 text-xs">When you open and study any lecture in the workstation, it will appear here.</p>
+                    <button
+                      onClick={() => setLearnerViewMode("library")}
+                      className="text-xs font-bold text-indigo-400 hover:underline pt-2 inline-block"
+                    >
+                      Browse All Lectures →
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {studyHistory.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="glass-card glass-card-hover p-5 rounded-xl flex flex-col justify-between space-y-3 group"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="px-2 py-0.5 glass-badge text-[10px] font-mono font-bold rounded text-indigo-300">
+                              STUDIED
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {item.timestamp ? new Date(item.timestamp).toLocaleDateString() : ""}
+                            </span>
+                          </div>
+                          <h3 className="font-bold text-sm text-white mt-2 group-hover:text-indigo-300 transition line-clamp-1">
+                            {item.title}
+                          </h3>
+                          <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                            {item.short_summary || "Video lecture study session."}
+                          </p>
+                        </div>
+
+                        <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-xs">
+                          <span className="font-mono text-[10px] text-cyan-300">
+                            {formatDuration(item.duration_seconds)}
+                          </span>
+                          <button
+                            onClick={() => handleOpenVideoFromAnalytics(item.video_id)}
+                            className="px-3 py-1.5 glass-button-primary text-white text-xs font-bold rounded-lg uppercase tracking-wider"
+                          >
+                            Resume Study ↗
                           </button>
                         </div>
                       </div>
@@ -1135,6 +1352,14 @@ export default function DashboardPage() {
                 </button>
 
                 <button
+                  onClick={handleShareWithStudents}
+                  className="px-3 py-1.5 glass-button-secondary hover:border-indigo-400/50 hover:text-indigo-300 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                  title="Copy formatted study guide to clipboard to share with students"
+                >
+                  <span>Share with Students 📤</span>
+                </button>
+
+                <button
                   onClick={() => handleExport("txt")}
                   className="px-3 py-1.5 glass-button-secondary rounded-lg text-xs font-semibold"
                 >
@@ -1354,9 +1579,37 @@ export default function DashboardPage() {
               {/* ROW 2: Full Width AI Executive Summary & Insights */}
               <div className="glass-card p-5 rounded-xl space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></span>
-                    <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">AI Executive Summary & Insights</h3>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></span>
+                      <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
+                        AI Lecture Intelligence & Learning Materials
+                      </h3>
+                    </div>
+
+                    <div className="flex items-center gap-1 glass-panel p-1 rounded-xl">
+                      <button
+                        onClick={() => setStudyTab("detailed")}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                          studyTab === "detailed" ? "glass-button-primary text-white" : "text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        Summaries & Notes
+                      </button>
+                      <button
+                        onClick={() => setStudyTab("quiz")}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                          studyTab === "quiz" ? "glass-button-primary text-white" : "text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        <span>Study Quiz & Flashcards 🎓</span>
+                        {selectedVideo.study_materials && selectedVideo.study_materials.length > 0 && (
+                          <span className="w-4 h-4 rounded-full bg-cyan-400 text-black font-bold text-[10px] flex items-center justify-center">
+                            {selectedVideo.study_materials.length}
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   {selectedVideo.keywords && selectedVideo.keywords.length > 0 && (
@@ -1373,25 +1626,146 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                  {/* Short Summary */}
-                  <div className="glass-panel p-4 rounded-lg space-y-2 border border-indigo-500/20 bg-indigo-950/10">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0"></span>
-                      <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-wider">Executive Short Summary</h4>
+                {studyTab === "detailed" ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                    {/* Short Summary */}
+                    <div className="glass-panel p-4 rounded-lg space-y-2 border border-indigo-500/20 bg-indigo-950/10">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0"></span>
+                        <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-wider">Executive Short Summary</h4>
+                      </div>
+                      <p className="text-xs text-slate-200 leading-relaxed font-normal">{selectedVideo.short_summary || "No short summary available."}</p>
                     </div>
-                    <p className="text-xs text-slate-200 leading-relaxed font-normal">{selectedVideo.short_summary || "No short summary available."}</p>
-                  </div>
 
-                  {/* Detailed Summary */}
-                  <div className="glass-panel p-4 rounded-lg space-y-2 border border-purple-500/20 bg-purple-950/10 max-h-[380px] overflow-y-auto pr-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0"></span>
-                      <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider">Detailed Content Breakdown</h4>
+                    {/* Detailed Summary */}
+                    <div className="glass-panel p-4 rounded-lg space-y-2 border border-purple-500/20 bg-purple-950/10 max-h-[380px] overflow-y-auto pr-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0"></span>
+                        <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider">Detailed Content Breakdown</h4>
+                      </div>
+                      {renderFormattedDetailedSummary(selectedVideo.detailed_summary)}
                     </div>
-                    {renderFormattedDetailedSummary(selectedVideo.detailed_summary)}
                   </div>
-                </div>
+                ) : (
+                  /* STUDY QUIZ & FLASHCARDS VIEW */
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-white/[0.06]">
+                      <div>
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Interactive Student Comprehension Quiz</h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Test mastery of key concepts automatically extracted by Groq LLM from the transcript.</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {selectedVideo.study_materials && selectedVideo.study_materials.length > 0 && (
+                          <button
+                            onClick={() => {
+                              setSelectedAnswers({});
+                              setRevealedAnswers({});
+                            }}
+                            className="px-3 py-1 glass-button-secondary text-xs rounded-lg"
+                          >
+                            Reset Quiz
+                          </button>
+                        )}
+                        <button
+                          onClick={handleGenerateStudyQuiz}
+                          disabled={generatingQuiz}
+                          className="px-3.5 py-1 glass-button-primary text-white rounded-lg text-xs font-bold uppercase tracking-wider disabled:opacity-50"
+                        >
+                          {generatingQuiz ? "Generating with Groq LLM..." : "Regenerate Questions"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {selectedVideo.study_materials && selectedVideo.study_materials.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {selectedVideo.study_materials.map((q, qIdx) => {
+                          const userSelected = selectedAnswers[q.id ?? qIdx];
+                          const isAnswered = userSelected !== undefined;
+                          const isCorrect = userSelected === q.correct_index;
+                          const showAnswer = revealedAnswers[q.id ?? qIdx] || isAnswered;
+
+                          return (
+                            <div key={qIdx} className="glass-panel p-4 rounded-xl space-y-3 border border-white/10 flex flex-col justify-between">
+                              <div>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="px-2 py-0.5 glass-badge text-[10px] font-mono font-bold rounded text-indigo-300">
+                                    Question {qIdx + 1}
+                                  </span>
+                                  {q.concept && (
+                                    <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                                      {q.concept}
+                                    </span>
+                                  )}
+                                </div>
+                                <h5 className="font-bold text-xs text-white mt-2 leading-relaxed">
+                                  {q.question}
+                                </h5>
+                              </div>
+
+                              <div className="space-y-1.5 pt-1">
+                                {q.options && q.options.map((opt, optIdx) => {
+                                  const isThisSelected = userSelected === optIdx;
+                                  const isThisCorrect = optIdx === q.correct_index;
+                                  
+                                  let btnStyle = "glass-panel hover:bg-white/10 text-slate-300 border-white/10";
+                                  if (showAnswer) {
+                                    if (isThisCorrect) {
+                                      btnStyle = "bg-emerald-600/30 border-emerald-400 text-emerald-200 font-bold";
+                                    } else if (isThisSelected && !isThisCorrect) {
+                                      btnStyle = "bg-rose-600/30 border-rose-400 text-rose-200";
+                                    }
+                                  }
+
+                                  return (
+                                    <button
+                                      key={optIdx}
+                                      onClick={() => {
+                                        setSelectedAnswers((prev) => ({ ...prev, [q.id ?? qIdx]: optIdx }));
+                                      }}
+                                      className={`w-full text-left p-2.5 rounded-lg text-xs transition border flex items-center justify-between gap-2 ${btnStyle}`}
+                                    >
+                                      <span className="leading-snug">{opt}</span>
+                                      {showAnswer && isThisCorrect && (
+                                        <span className="text-emerald-400 font-bold text-xs shrink-0">✓ Correct</span>
+                                      )}
+                                      {showAnswer && isThisSelected && !isThisCorrect && (
+                                        <span className="text-rose-400 font-bold text-xs shrink-0">✕</span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {showAnswer && q.explanation && (
+                                <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-[11px] text-slate-300 space-y-1">
+                                  <span className="font-bold text-indigo-300 block">Explanation:</span>
+                                  <p className="leading-relaxed">{q.explanation}</p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="py-12 text-center glass-panel rounded-xl border border-dashed border-white/15 space-y-3">
+                        <div className="w-12 h-12 rounded-full bg-indigo-600/20 text-indigo-400 flex items-center justify-center text-xl mx-auto shadow-inner">
+                          🎓
+                        </div>
+                        <h5 className="font-bold text-sm text-white">No Study Materials Generated Yet</h5>
+                        <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                          Extract study quizzes, review flashcards, and comprehension questions from this lecture's transcript using Groq LLM.
+                        </p>
+                        <button
+                          onClick={handleGenerateStudyQuiz}
+                          disabled={generatingQuiz}
+                          className="px-5 py-2.5 glass-button-primary text-white rounded-xl text-xs font-bold uppercase tracking-wider disabled:opacity-50"
+                        >
+                          {generatingQuiz ? "Analyzing Transcript & Generating Quiz..." : "Generate AI Study Quiz Now 🎓"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
             </div>
@@ -2187,10 +2561,13 @@ export default function DashboardPage() {
             {/* TIER 6: SYSTEM AUDIT & ACTIVITY HISTORY */}
             <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-5">
               <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-                <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
-                  Recent Activity Audit Logs
-                </h3>
-                <span className="text-[10px] font-mono text-slate-400">Timestamped operational events</span>
+                <div>
+                  <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
+                    Platform Activity Audit Logs
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Chronological system events and operational activity stream</p>
+                </div>
+                <span className="text-[10px] font-mono text-slate-400">Real-time DB events</span>
               </div>
 
               {analytics?.recent_activities?.length > 0 ? (
@@ -2198,7 +2575,8 @@ export default function DashboardPage() {
                   <table className="w-full text-left text-xs text-slate-200">
                     <thead className="glass-panel text-slate-400 uppercase text-[10px] font-semibold">
                       <tr>
-                        <th className="py-3 px-4 rounded-l-lg">Action</th>
+                        <th className="py-3 px-4 rounded-l-lg">User</th>
+                        <th className="py-3 px-4">Action</th>
                         <th className="py-3 px-4">Event Details</th>
                         <th className="py-3 px-4 rounded-r-lg">Timestamp</th>
                       </tr>
@@ -2206,8 +2584,24 @@ export default function DashboardPage() {
                     <tbody className="divide-y divide-white/[0.06]">
                       {analytics.recent_activities.map((act) => (
                         <tr key={act.id} className="hover:bg-white/[0.04] transition">
-                          <td className="py-3.5 px-4 font-bold text-indigo-300 font-mono text-[11px]">
-                            {act.action}
+                          <td className="py-3.5 px-4 font-bold text-white font-mono text-[11px]">
+                            {act.user_name || "User"}
+                            {act.user_email && (
+                              <span className="text-[10px] text-slate-500 font-mono block">{act.user_email}</span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
+                              act.action === "study_video"
+                                ? "glass-badge text-cyan-300"
+                                : act.action === "process_video"
+                                ? "glass-badge-amber text-amber-300"
+                                : act.action === "upload_video"
+                                ? "glass-badge-emerald text-emerald-300"
+                                : "glass-badge text-indigo-300"
+                            }`}>
+                              {act.action?.replace("_", " ")}
+                            </span>
                           </td>
                           <td className="py-3.5 px-4 font-mono text-[11px] text-slate-300">
                             {act.extra_data?.title ? (
@@ -2228,6 +2622,64 @@ export default function DashboardPage() {
                 <p className="text-xs text-slate-500 italic py-6 text-center">No recent activity recorded.</p>
               )}
             </div>
+
+            {/* TIER 7: PLATFORM CONFIGURATION & SYSTEM HEALTH */}
+            {analytics?.system_settings && (
+              <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-5">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-3">
+                  <div>
+                    <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
+                      Platform Configuration & Service Health
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Operational status of external cloud integrations, AI pipelines, and storage drivers.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 text-[10px] font-mono font-bold text-emerald-400 glass-badge-emerald rounded-lg flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    {analytics.system_settings.system_status}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="glass-panel p-4 rounded-xl space-y-1.5 border border-white/10">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase">Cloud Storage Driver</span>
+                    <h4 className="text-xs font-bold text-cyan-300 font-mono">{analytics.system_settings.storage_provider}</h4>
+                    <p className="text-[11px] text-slate-400">Persistent video storage & global CDN delivery</p>
+                  </div>
+
+                  <div className="glass-panel p-4 rounded-xl space-y-1.5 border border-white/10">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase">Speech-To-Text AI Model</span>
+                    <h4 className="text-xs font-bold text-emerald-300 font-mono">{analytics.system_settings.stt_engine}</h4>
+                    <p className="text-[11px] text-slate-400">Timestamped audio transcription engine</p>
+                  </div>
+
+                  <div className="glass-panel p-4 rounded-xl space-y-1.5 border border-white/10">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase">NLP Summarization Engine</span>
+                    <h4 className="text-xs font-bold text-purple-300 font-mono">{analytics.system_settings.nlp_engine}</h4>
+                    <p className="text-[11px] text-slate-400">Executive summaries & semantic key moments</p>
+                  </div>
+
+                  <div className="glass-panel p-4 rounded-xl space-y-1.5 border border-white/10">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase">Database Architecture</span>
+                    <h4 className="text-xs font-bold text-indigo-300 font-mono">{analytics.system_settings.database}</h4>
+                    <p className="text-[11px] text-slate-400">Relational data warehouse with full RBAC schema</p>
+                  </div>
+
+                  <div className="glass-panel p-4 rounded-xl space-y-1.5 border border-white/10">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase">Media Ingestion Limits</span>
+                    <h4 className="text-xs font-bold text-amber-300 font-mono">Max {analytics.system_settings.max_upload_size}</h4>
+                    <p className="text-[11px] text-slate-400">Supports {analytics.system_settings.supported_formats}</p>
+                  </div>
+
+                  <div className="glass-panel p-4 rounded-xl space-y-1.5 border border-white/10">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase">Platform Release</span>
+                    <h4 className="text-xs font-bold text-white font-mono">{analytics.system_settings.version}</h4>
+                    <p className="text-[11px] text-slate-400">FastAPI backend & Next.js frontend</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
           </div>
         )}

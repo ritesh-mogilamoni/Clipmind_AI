@@ -114,6 +114,18 @@ export const videosApi = {
     const response = await api.delete(`/videos/bookmarks/${bookmarkId}`);
     return response.data;
   },
+  recordStudy: async (videoId) => {
+    const response = await api.post(`/videos/${videoId}/study`);
+    return response.data;
+  },
+  getStudyHistory: async () => {
+    const response = await api.get("/videos/history/me");
+    return response.data;
+  },
+  getStudyMaterials: async (videoId) => {
+    const response = await api.post(`/videos/${videoId}/study-materials`);
+    return response.data;
+  },
 };
 
 export const analyticsApi = {

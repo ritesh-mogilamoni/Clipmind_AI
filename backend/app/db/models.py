@@ -98,6 +98,7 @@ class Video(Base):
     key_moments = Column(JSON, nullable=True)
     keywords = Column(JSON, nullable=True)
     language = Column(String, nullable=True)
+    study_materials = Column(JSON, nullable=True)
 
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)

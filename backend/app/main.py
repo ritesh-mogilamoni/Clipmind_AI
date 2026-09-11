@@ -12,9 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 # Initialize database tables and root administrator
 try:
     Base.metadata.create_all(bind=engine)
+    with engine.connect() as _conn:
+        _conn.execute(text("ALTER TABLE videos ADD COLUMN IF NOT EXISTS study_materials JSON;"))
+        _conn.commit()
 except Exception as _db_init_err:
     import logging
-    logging.getLogger(__name__).warning(f"Could not auto-create tables on startup: {_db_init_err}")
+    logging.getLogger(__name__).warning(f"Could not auto-create tables or schema migration on startup: {_db_init_err}")
 
 def seed_root_admin():
     import logging

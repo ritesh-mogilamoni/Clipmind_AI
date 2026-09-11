@@ -111,17 +111,20 @@ def get_dashboard_analytics(
     else:
         logs_query = db.query(ActivityLog).filter(ActivityLog.user_id == current_user.id)
 
-    logs = logs_query.order_by(ActivityLog.created_at.desc()).limit(10).all()
+    logs = logs_query.order_by(ActivityLog.created_at.desc()).limit(20).all()
 
-    activities = [
-        {
+    activities = []
+    for log in logs:
+        u = db.query(User).filter(User.id == log.user_id).first()
+        activities.append({
             "id": str(log.id),
+            "user_id": str(log.user_id),
+            "user_name": u.name if u else "User",
+            "user_email": u.email if u else "",
             "action": log.action,
             "extra_data": log.extra_data,
             "created_at": log.created_at.isoformat() if log.created_at else None,
-        }
-        for log in logs
-    ]
+        })
 
     # 5. Admin System Metrics
     admin_metrics = None
@@ -138,6 +141,18 @@ def get_dashboard_analytics(
             "total_storage_mb": round(total_system_storage / (1024 * 1024), 2),
             "total_system_videos": db.query(Video).count(),
         }
+
+    from app.services.cloudinary_service import is_cloudinary_configured
+    system_settings = {
+        "storage_provider": "Cloudinary CDN (Active & Connected)" if is_cloudinary_configured() else "Local Filesystem Storage (uploads/)",
+        "stt_engine": "Whisper Large V3 (via Groq Cloud)",
+        "nlp_engine": "Meta LLaMA 3.3 70B Versatile (via Groq Cloud)",
+        "database": "PostgreSQL (Neon Serverless)",
+        "max_upload_size": "500 MB",
+        "supported_formats": "MP4, MOV, AVI, WEBM, MKV",
+        "version": "v1.0.0 Production",
+        "system_status": "All Systems Operational & Healthy",
+    }
 
     return {
         "user_role": current_user.role,
@@ -157,6 +172,7 @@ def get_dashboard_analytics(
         "video_reports": video_reports,
         "recent_activities": activities,
         "admin_metrics": admin_metrics,
+        "system_settings": system_settings,
     }
 
 

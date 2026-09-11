@@ -30,6 +30,7 @@ class VideoResponse(BaseModel):
     key_moments: Optional[List[Any]] = None
     keywords: Optional[List[str]] = None
     language: Optional[str] = None
+    study_materials: Optional[List[Any]] = None
     created_at: datetime
 
     class Config:
