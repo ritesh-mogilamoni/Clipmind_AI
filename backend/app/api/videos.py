@@ -14,7 +14,7 @@ from app.schemas.video import VideoResponse, TranscriptUpdate, URLImportRequest
 from app.core.deps import get_current_user
 from app.services.video_processing import get_video_metadata
 from app.services.transcription import transcribe_video
-from app.services.summarization import generate_summaries_and_keywords, generate_study_materials
+from app.services.summarization import generate_summaries_and_keywords
 from app.services.key_moments import extract_key_moments
 from app.services.cloudinary_service import upload_video_to_cloudinary, is_cloudinary_configured
 
@@ -495,14 +495,6 @@ def process_video(
             duration_seconds=video.duration_seconds or 0,
         )
         video.key_moments = key_moments
-
-        # Step 4: Study Materials & Quiz Generation
-        try:
-            quiz = generate_study_materials(title=video.title, transcript_text=video.transcript_text)
-            video.study_materials = quiz
-        except Exception as sm_err:
-            logger.warning(f"Notice auto-generating study materials: {sm_err}")
-
         video.status = VideoStatus.completed
         
         # Log Activity
@@ -648,31 +640,6 @@ def record_study_activity(
     db.add(log)
     db.commit()
     return {"status": "success", "message": "Study activity logged"}
-
-
-@router.post("/{video_id}/study-materials")
-def get_or_generate_study_materials_endpoint(
-    video_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Returns existing or generates interactive study materials & quiz questions from the video transcript.
-    """
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-
-    if video.study_materials and isinstance(video.study_materials, list) and len(video.study_materials) > 0:
-        return {"study_materials": video.study_materials}
-
-    quiz = generate_study_materials(
-        title=video.title,
-        transcript_text=video.transcript_text or video.detailed_summary or video.title,
-    )
-    video.study_materials = quiz
-    db.commit()
-    return {"study_materials": quiz}
 
 
 @router.delete("/{video_id}")

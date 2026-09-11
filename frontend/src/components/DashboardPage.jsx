@@ -238,13 +238,9 @@ export default function DashboardPage() {
   const [updatingUserRoleId, setUpdatingUserRoleId] = useState(null);
   const [learnerViewMode, setLearnerViewMode] = useState("library"); // "library", "bookmarks", or "history"
 
-  // Learning History, Study Materials & Profile State
+  // Learning History, Profile & Sharing State
   const [studyHistory, setStudyHistory] = useState([]);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [studyTab, setStudyTab] = useState("detailed"); // 'detailed' or 'quiz'
-  const [generatingQuiz, setGeneratingQuiz] = useState(false);
-  const [selectedAnswers, setSelectedAnswers] = useState({});
-  const [revealedAnswers, setRevealedAnswers] = useState({});
   const [shareSuccessToast, setShareSuccessToast] = useState("");
 
   const fetchBookmarks = async () => {
@@ -443,9 +439,6 @@ export default function DashboardPage() {
     setEditedTranscriptText(video.transcript_text || "");
     setActiveTab("details");
     setIsBookmarked(bookmarks.some((b) => b.video?.id === video.id));
-    setSelectedAnswers({});
-    setRevealedAnswers({});
-    setStudyTab("detailed");
     videosApi.recordStudy(video.id).then(() => fetchStudyHistory()).catch(() => {});
   };
 
@@ -468,23 +461,6 @@ export default function DashboardPage() {
       }).catch(() => {
         alert("Copied study notes!");
       });
-    }
-  };
-
-  const handleGenerateStudyQuiz = async () => {
-    if (!selectedVideo) return;
-    setGeneratingQuiz(true);
-    try {
-      const res = await videosApi.getStudyMaterials(selectedVideo.id);
-      if (res && res.study_materials) {
-        const updated = { ...selectedVideo, study_materials: res.study_materials };
-        setSelectedVideo(updated);
-        selectedVideoRef.current = updated;
-      }
-    } catch (err) {
-      alert("Failed to generate study materials: " + (err.response?.data?.detail || err.message));
-    } finally {
-      setGeneratingQuiz(false);
     }
   };
 
@@ -1577,39 +1553,14 @@ export default function DashboardPage() {
               </div>
 
               {/* ROW 2: Full Width AI Executive Summary & Insights */}
+              {/* ROW 2: Full Width AI Executive Summary & Insights */}
               <div className="glass-card p-5 rounded-xl space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></span>
-                      <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
-                        AI Lecture Intelligence & Learning Materials
-                      </h3>
-                    </div>
-
-                    <div className="flex items-center gap-1 glass-panel p-1 rounded-xl">
-                      <button
-                        onClick={() => setStudyTab("detailed")}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
-                          studyTab === "detailed" ? "glass-button-primary text-white" : "text-slate-400 hover:text-white"
-                        }`}
-                      >
-                        Summaries & Notes
-                      </button>
-                      <button
-                        onClick={() => setStudyTab("quiz")}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
-                          studyTab === "quiz" ? "glass-button-primary text-white" : "text-slate-400 hover:text-white"
-                        }`}
-                      >
-                        <span>Study Quiz & Flashcards 🎓</span>
-                        {selectedVideo.study_materials && selectedVideo.study_materials.length > 0 && (
-                          <span className="w-4 h-4 rounded-full bg-cyan-400 text-black font-bold text-[10px] flex items-center justify-center">
-                            {selectedVideo.study_materials.length}
-                          </span>
-                        )}
-                      </button>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></span>
+                    <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
+                      AI Executive Summary & Content Insights
+                    </h3>
                   </div>
 
                   {selectedVideo.keywords && selectedVideo.keywords.length > 0 && (
@@ -1626,146 +1577,25 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                {studyTab === "detailed" ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                    {/* Short Summary */}
-                    <div className="glass-panel p-4 rounded-lg space-y-2 border border-indigo-500/20 bg-indigo-950/10">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0"></span>
-                        <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-wider">Executive Short Summary</h4>
-                      </div>
-                      <p className="text-xs text-slate-200 leading-relaxed font-normal">{selectedVideo.short_summary || "No short summary available."}</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                  {/* Short Summary */}
+                  <div className="glass-panel p-4 rounded-lg space-y-2 border border-indigo-500/20 bg-indigo-950/10">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0"></span>
+                      <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-wider">Executive Short Summary</h4>
                     </div>
-
-                    {/* Detailed Summary */}
-                    <div className="glass-panel p-4 rounded-lg space-y-2 border border-purple-500/20 bg-purple-950/10 max-h-[380px] overflow-y-auto pr-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0"></span>
-                        <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider">Detailed Content Breakdown</h4>
-                      </div>
-                      {renderFormattedDetailedSummary(selectedVideo.detailed_summary)}
-                    </div>
+                    <p className="text-xs text-slate-200 leading-relaxed font-normal">{selectedVideo.short_summary || "No short summary available."}</p>
                   </div>
-                ) : (
-                  /* STUDY QUIZ & FLASHCARDS VIEW */
-                  <div className="space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-white/[0.06]">
-                      <div>
-                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Interactive Student Comprehension Quiz</h4>
-                        <p className="text-[11px] text-slate-400 mt-0.5">Test mastery of key concepts automatically extracted by Groq LLM from the transcript.</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {selectedVideo.study_materials && selectedVideo.study_materials.length > 0 && (
-                          <button
-                            onClick={() => {
-                              setSelectedAnswers({});
-                              setRevealedAnswers({});
-                            }}
-                            className="px-3 py-1 glass-button-secondary text-xs rounded-lg"
-                          >
-                            Reset Quiz
-                          </button>
-                        )}
-                        <button
-                          onClick={handleGenerateStudyQuiz}
-                          disabled={generatingQuiz}
-                          className="px-3.5 py-1 glass-button-primary text-white rounded-lg text-xs font-bold uppercase tracking-wider disabled:opacity-50"
-                        >
-                          {generatingQuiz ? "Generating with Groq LLM..." : "Regenerate Questions"}
-                        </button>
-                      </div>
+
+                  {/* Detailed Summary */}
+                  <div className="glass-panel p-4 rounded-lg space-y-2 border border-purple-500/20 bg-purple-950/10 max-h-[380px] overflow-y-auto pr-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0"></span>
+                      <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider">Detailed Content Breakdown</h4>
                     </div>
-
-                    {selectedVideo.study_materials && selectedVideo.study_materials.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {selectedVideo.study_materials.map((q, qIdx) => {
-                          const userSelected = selectedAnswers[q.id ?? qIdx];
-                          const isAnswered = userSelected !== undefined;
-                          const isCorrect = userSelected === q.correct_index;
-                          const showAnswer = revealedAnswers[q.id ?? qIdx] || isAnswered;
-
-                          return (
-                            <div key={qIdx} className="glass-panel p-4 rounded-xl space-y-3 border border-white/10 flex flex-col justify-between">
-                              <div>
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="px-2 py-0.5 glass-badge text-[10px] font-mono font-bold rounded text-indigo-300">
-                                    Question {qIdx + 1}
-                                  </span>
-                                  {q.concept && (
-                                    <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
-                                      {q.concept}
-                                    </span>
-                                  )}
-                                </div>
-                                <h5 className="font-bold text-xs text-white mt-2 leading-relaxed">
-                                  {q.question}
-                                </h5>
-                              </div>
-
-                              <div className="space-y-1.5 pt-1">
-                                {q.options && q.options.map((opt, optIdx) => {
-                                  const isThisSelected = userSelected === optIdx;
-                                  const isThisCorrect = optIdx === q.correct_index;
-                                  
-                                  let btnStyle = "glass-panel hover:bg-white/10 text-slate-300 border-white/10";
-                                  if (showAnswer) {
-                                    if (isThisCorrect) {
-                                      btnStyle = "bg-emerald-600/30 border-emerald-400 text-emerald-200 font-bold";
-                                    } else if (isThisSelected && !isThisCorrect) {
-                                      btnStyle = "bg-rose-600/30 border-rose-400 text-rose-200";
-                                    }
-                                  }
-
-                                  return (
-                                    <button
-                                      key={optIdx}
-                                      onClick={() => {
-                                        setSelectedAnswers((prev) => ({ ...prev, [q.id ?? qIdx]: optIdx }));
-                                      }}
-                                      className={`w-full text-left p-2.5 rounded-lg text-xs transition border flex items-center justify-between gap-2 ${btnStyle}`}
-                                    >
-                                      <span className="leading-snug">{opt}</span>
-                                      {showAnswer && isThisCorrect && (
-                                        <span className="text-emerald-400 font-bold text-xs shrink-0">✓ Correct</span>
-                                      )}
-                                      {showAnswer && isThisSelected && !isThisCorrect && (
-                                        <span className="text-rose-400 font-bold text-xs shrink-0">✕</span>
-                                      )}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-
-                              {showAnswer && q.explanation && (
-                                <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-[11px] text-slate-300 space-y-1">
-                                  <span className="font-bold text-indigo-300 block">Explanation:</span>
-                                  <p className="leading-relaxed">{q.explanation}</p>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="py-12 text-center glass-panel rounded-xl border border-dashed border-white/15 space-y-3">
-                        <div className="w-12 h-12 rounded-full bg-indigo-600/20 text-indigo-400 flex items-center justify-center text-xl mx-auto shadow-inner">
-                          🎓
-                        </div>
-                        <h5 className="font-bold text-sm text-white">No Study Materials Generated Yet</h5>
-                        <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-                          Extract study quizzes, review flashcards, and comprehension questions from this lecture's transcript using Groq LLM.
-                        </p>
-                        <button
-                          onClick={handleGenerateStudyQuiz}
-                          disabled={generatingQuiz}
-                          className="px-5 py-2.5 glass-button-primary text-white rounded-xl text-xs font-bold uppercase tracking-wider disabled:opacity-50"
-                        >
-                          {generatingQuiz ? "Analyzing Transcript & Generating Quiz..." : "Generate AI Study Quiz Now 🎓"}
-                        </button>
-                      </div>
-                    )}
+                    {renderFormattedDetailedSummary(selectedVideo.detailed_summary)}
                   </div>
-                )}
+                </div>
               </div>
 
             </div>
