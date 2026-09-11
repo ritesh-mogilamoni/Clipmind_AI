@@ -66,7 +66,11 @@ export const videosApi = {
   },
   getVideoFileUrl: (id, video = null) => {
     if (video && video.storage_path && (video.storage_path.startsWith("http://") || video.storage_path.startsWith("https://"))) {
-      return video.storage_path;
+      let url = video.storage_path;
+      if (url.includes("res.cloudinary.com")) {
+        url = url.replace(/\.[a-zA-Z0-9]+$/, ".mp4");
+      }
+      return url;
     }
     const token = typeof window !== "undefined" ? localStorage.getItem("clipmind_token") : "";
     return `${API_BASE_URL}/videos/${id}/file?token=${token}`;

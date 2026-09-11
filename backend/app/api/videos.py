@@ -271,9 +271,12 @@ def get_video_file(
     if not video:
         raise HTTPException(status_code=404, detail="Video record not found")
 
-    # If video is stored in Cloudinary or remote CDN, redirect directly to the stream
+    # If video is stored in Cloudinary or remote CDN, redirect directly to the stream (guaranteeing .mp4 for browser playback)
     if video.storage_path and (video.storage_path.startswith("http://") or video.storage_path.startswith("https://")):
-        return RedirectResponse(video.storage_path, status_code=307)
+        target_url = video.storage_path
+        if "res.cloudinary.com" in target_url:
+            target_url = re.sub(r"\.[a-zA-Z0-9]+$", ".mp4", target_url)
+        return RedirectResponse(target_url, status_code=307)
 
     # Locate actual file on disk (handling cross-platform Windows/Linux path separators)
     file_path = video.storage_path

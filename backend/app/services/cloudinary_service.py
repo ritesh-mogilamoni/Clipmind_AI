@@ -48,7 +48,11 @@ def upload_video_to_cloudinary(file_path: str, public_id: str = None) -> dict | 
             folder="clipmind_videos",
             public_id=public_id,
             chunk_size=6000000,  # 6MB chunks for reliable streaming upload
+            format="mp4",
         )
+        if upload_result and upload_result.get("secure_url"):
+            import re
+            upload_result["secure_url"] = re.sub(r"\.[a-zA-Z0-9]+$", ".mp4", upload_result["secure_url"])
         logger.info(f"Cloudinary upload complete: {upload_result.get('secure_url')}")
         return upload_result
     except Exception as e:
