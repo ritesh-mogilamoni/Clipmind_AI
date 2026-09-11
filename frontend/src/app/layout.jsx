@@ -13,7 +13,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className="dark">
-      <body className="bg-[#050811] text-[#F8FAFC] antialiased selection:bg-indigo-500 selection:text-white min-h-screen">
+      <body className="bg-[#0B0D14] text-[#F8FAFC] antialiased selection:bg-indigo-600/30 selection:text-indigo-200 min-h-screen">
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

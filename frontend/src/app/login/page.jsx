@@ -38,64 +38,56 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050811] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 text-[#F8FAFC] selection:bg-indigo-500 selection:text-white relative overflow-hidden">
-      
-      {/* ANIMATED AMBIENT CAUSTIC GLOW ORBS */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[750px] h-[550px] bg-gradient-to-tr from-indigo-600/35 via-violet-600/30 to-cyan-400/25 rounded-full pointer-events-none -z-0 orb-float-1"></div>
-      <div className="absolute bottom-10 left-10 w-[450px] h-[450px] bg-fuchsia-600/25 rounded-full pointer-events-none -z-0 orb-float-2"></div>
-      <div className="absolute top-10 right-10 w-[400px] h-[400px] bg-cyan-500/20 rounded-full pointer-events-none -z-0 orb-float-3"></div>
-
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center space-y-3 relative z-10">
-        <Link href="/" className="inline-flex items-center gap-2.5 text-2xl font-black tracking-tight text-white group">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-cyan-400 p-[1px] shadow-[0_0_25px_rgba(99,102,241,0.6)]">
-            <div className="w-full h-full bg-[#070B14] rounded-[11px] flex items-center justify-center">
-              <span className="text-xs font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-300">CM</span>
-            </div>
+    <div className="min-h-screen bg-[#0B0D14] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 text-slate-100 font-sans antialiased">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center space-y-3">
+        <Link href="/" className="inline-flex items-center gap-2.5 text-xl font-bold tracking-tight text-white group">
+          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs shadow-sm">
+            CM
           </div>
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-slate-300">
+          <span className="font-semibold text-lg text-white group-hover:text-slate-200 transition-colors">
             ClipMind AI
           </span>
         </Link>
-        <p className="text-xs text-slate-400 font-medium">Sign in to access your intelligence studio</p>
+        <p className="text-xs text-slate-400">Sign in to your video intelligence workspace</p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        <div className="glass-card-crystal py-8 px-6 sm:px-10 rounded-2xl space-y-6">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="surface-card py-8 px-6 sm:px-8 space-y-6">
           {error && (
-            <div className="p-3.5 bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs rounded-xl font-medium backdrop-blur-md">
+            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs rounded-lg font-medium">
               {error}
             </div>
           )}
 
-          <form className="space-y-5" onSubmit={handleSubmit}>
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">Email Address</label>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">Email Address</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
-                className="w-full px-4 py-2.5 glass-input rounded-xl text-xs"
+                className="surface-input w-full px-3.5 py-2.5 rounded-lg text-xs"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">Password</label>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">Password</label>
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-4 py-2.5 glass-input rounded-xl text-xs"
+                className="surface-input w-full px-3.5 py-2.5 rounded-lg text-xs"
               />
             </div>
 
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3 px-4 glass-button-primary text-white font-bold text-xs rounded-xl uppercase tracking-wider disabled:opacity-40"
+              className="btn-primary w-full py-2.5 px-4 text-xs font-medium rounded-lg disabled:opacity-50"
             >
               {submitting ? "Signing in..." : "Sign In to Studio"}
             </button>
@@ -103,7 +95,7 @@ export default function LoginPage() {
 
           <div className="text-center text-xs text-slate-400 pt-4 border-t border-white/[0.08]">
             Don't have an account?{" "}
-            <Link href="/signup" className="text-indigo-400 hover:text-indigo-300 font-bold transition">
+            <Link href="/signup" className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
               Register here
             </Link>
           </div>
