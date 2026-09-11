@@ -33,6 +33,12 @@ def upload_video(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role not in {UserRole.content_creator, UserRole.educator, UserRole.administrator}:
+        raise HTTPException(
+            status_code=403,
+            detail="Learners do not have permission to upload videos. Please switch to a Content Creator or Educator account.",
+        )
+
     # Validate file extension
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -108,6 +114,12 @@ def import_video_url(
     """
     Imports and downloads an online video directly via URL link (YouTube, Vimeo, or direct media link).
     """
+    if current_user.role not in {UserRole.content_creator, UserRole.educator, UserRole.administrator}:
+        raise HTTPException(
+            status_code=403,
+            detail="Learners do not have permission to import videos. Please switch to a Content Creator or Educator account.",
+        )
+
     import urllib.parse
     import urllib.request
 
@@ -246,6 +258,49 @@ def list_videos(
     return videos
 
 
+@router.get("/bookmarks/me")
+def get_my_bookmarks(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve all bookmarked videos for the current logged-in user."""
+    bms = db.query(Bookmark).filter(Bookmark.user_id == current_user.id).order_by(Bookmark.created_at.desc()).all()
+    results = []
+    for b in bms:
+        v = db.query(Video).filter(Video.id == b.video_id).first()
+        if v:
+            results.append({
+                "bookmark_id": str(b.id),
+                "note": b.note,
+                "created_at": b.created_at.isoformat() if b.created_at else None,
+                "video": {
+                    "id": str(v.id),
+                    "title": v.title,
+                    "duration_seconds": v.duration_seconds,
+                    "short_summary": v.short_summary,
+                    "keywords": (v.keywords or [])[:4] if isinstance(v.keywords, list) else [],
+                    "key_moments_count": len(v.key_moments) if v.key_moments and isinstance(v.key_moments, list) else 0,
+                    "status": v.status.value if hasattr(v.status, "value") else str(v.status),
+                }
+            })
+    return results
+
+
+@router.delete("/bookmarks/{bookmark_id}")
+def delete_bookmark(
+    bookmark_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove a bookmark."""
+    bm = db.query(Bookmark).filter(Bookmark.id == bookmark_id, Bookmark.user_id == current_user.id).first()
+    if not bm:
+        raise HTTPException(status_code=404, detail="Bookmark not found")
+    db.delete(bm)
+    db.commit()
+    return {"status": "success", "message": "Bookmark removed"}
+
+
 @router.get("/{video_id}", response_model=VideoResponse)
 def get_video(
     video_id: uuid.UUID,
@@ -357,6 +412,12 @@ def process_video(
     3. Key Moments & Timestamp Highlight Detection
     4. Topic Keywords Extraction
     """
+    if current_user.role not in {UserRole.content_creator, UserRole.educator, UserRole.administrator}:
+        raise HTTPException(
+            status_code=403,
+            detail="Learners do not have permission to run AI processing workflows.",
+        )
+
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -421,6 +482,12 @@ def update_transcript(
     """
     Update/edit transcript text (available to educators, creators, and admins).
     """
+    if current_user.role not in {UserRole.educator, UserRole.content_creator, UserRole.administrator}:
+        raise HTTPException(
+            status_code=403,
+            detail="Learners do not have permission to edit transcripts.",
+        )
+
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")

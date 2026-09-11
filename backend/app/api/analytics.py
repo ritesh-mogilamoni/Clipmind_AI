@@ -160,6 +160,12 @@ def get_dashboard_analytics(
     }
 
 
+from pydantic import BaseModel
+
+class RoleUpdateRequest(BaseModel):
+    role: UserRole
+
+
 @router.get("/admin/users")
 def get_admin_user_stats(
     db: Session = Depends(get_db),
@@ -179,8 +185,70 @@ def get_admin_user_stats(
             "id": str(u.id),
             "name": u.name,
             "email": u.email,
-            "role": u.role,
+            "role": u.role.value if hasattr(u.role, "value") else str(u.role),
             "videos_count": v_count,
             "created_at": u.created_at.isoformat() if u.created_at else None,
+        })
+    return results
+
+
+@router.patch("/admin/users/{user_id}/role")
+def update_user_role(
+    user_id: str,
+    payload: RoleUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Administrator endpoint to change or elevate any user's role.
+    """
+    if current_user.role != UserRole.administrator:
+        raise HTTPException(status_code=403, detail="Administrator access required")
+
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target_user.role = payload.role
+    db.commit()
+    db.refresh(target_user)
+    return {
+        "status": "success",
+        "message": f"Updated {target_user.name}'s role to {payload.role.value}",
+        "user": {
+            "id": str(target_user.id),
+            "name": target_user.name,
+            "email": target_user.email,
+            "role": target_user.role.value if hasattr(target_user.role, "value") else str(target_user.role),
+        }
+    }
+
+
+@router.get("/admin/jobs")
+def get_admin_processing_jobs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Administrator endpoint to monitor all AI video processing jobs.
+    """
+    if current_user.role != UserRole.administrator:
+        raise HTTPException(status_code=403, detail="Administrator access required")
+
+    videos = db.query(Video).order_by(Video.created_at.desc()).limit(50).all()
+    results = []
+    for v in videos:
+        uploader = db.query(User).filter(User.id == v.uploaded_by).first()
+        results.append({
+            "id": str(v.id),
+            "title": v.title,
+            "uploader_name": uploader.name if uploader else "Unknown",
+            "uploader_email": uploader.email if uploader else "Unknown",
+            "status": v.status.value if hasattr(v.status, "value") else str(v.status),
+            "duration_seconds": v.duration_seconds or 0,
+            "has_transcript": bool(v.transcript_text and v.transcript_text.strip()),
+            "has_summary": bool(v.short_summary and v.short_summary.strip()),
+            "key_moments_count": len(v.key_moments) if v.key_moments and isinstance(v.key_moments, list) else 0,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
         })
     return results

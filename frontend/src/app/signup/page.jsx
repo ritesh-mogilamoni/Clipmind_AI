@@ -113,10 +113,9 @@ export default function SignupPage() {
                 onChange={(e) => setRole(e.target.value)}
                 className="w-full px-4 py-2.5 glass-input rounded-xl text-xs cursor-pointer font-medium bg-[#0B1020]"
               >
-                <option value="content_creator" className="bg-[#0B1020] text-white">Content Creator (Upload & Process)</option>
-                <option value="learner" className="bg-[#0B1020] text-white">Learner (View & Study)</option>
-                <option value="educator" className="bg-[#0B1020] text-white">Educator (Transcripts & Notes)</option>
-                <option value="administrator" className="bg-[#0B1020] text-white">Administrator (Full Access)</option>
+                <option value="content_creator" className="bg-[#0B1020] text-white">Content Creator (Upload, Analyze & Manage)</option>
+                <option value="educator" className="bg-[#0B1020] text-white">Educator (Lectures, Transcripts & Notes)</option>
+                <option value="learner" className="bg-[#0B1020] text-white">Learner (Watch, Study & Bookmark)</option>
               </select>
             </div>
 

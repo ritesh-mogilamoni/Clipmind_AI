@@ -232,10 +232,60 @@ export default function DashboardPage() {
     }
   };
 
+  // Bookmarks & RBAC State
+  const [bookmarks, setBookmarks] = useState([]);
+  const [adminJobs, setAdminJobs] = useState([]);
+  const [updatingUserRoleId, setUpdatingUserRoleId] = useState(null);
+  const [learnerViewMode, setLearnerViewMode] = useState("library"); // "library" or "bookmarks"
+
+  const fetchBookmarks = async () => {
+    try {
+      const data = await videosApi.getMyBookmarks();
+      setBookmarks(data);
+    } catch (err) {
+      console.error("Failed to fetch bookmarks:", err);
+    }
+  };
+
+  const fetchAdminJobs = async () => {
+    if (user?.role === "administrator") {
+      try {
+        const jobs = await analyticsApi.getAdminJobs();
+        setAdminJobs(jobs);
+      } catch (err) {
+        console.error("Failed to fetch admin jobs:", err);
+      }
+    }
+  };
+
+  const handleRoleChange = async (userId, newRole) => {
+    setUpdatingUserRoleId(userId);
+    try {
+      await analyticsApi.updateUserRole(userId, newRole);
+      await fetchAnalytics();
+      alert("User role updated successfully!");
+    } catch (err) {
+      alert("Failed to update user role: " + (err.response?.data?.detail || err.message));
+    } finally {
+      setUpdatingUserRoleId(null);
+    }
+  };
+
+  const handleRemoveBookmark = async (bookmarkId) => {
+    try {
+      await videosApi.deleteBookmark(bookmarkId);
+      await fetchBookmarks();
+    } catch (err) {
+      alert("Failed to remove bookmark: " + err.message);
+    }
+  };
+
   useEffect(() => {
     fetchVideos();
     fetchAnalytics();
-  }, []);
+    fetchBookmarks();
+    fetchAdminJobs();
+  }, [user]);
 
   useEffect(() => {
     setVideoError(false);
@@ -427,6 +477,7 @@ export default function DashboardPage() {
     try {
       await videosApi.bookmarkVideo(selectedVideo.id, "Saved to bookmarks");
       setIsBookmarked(true);
+      fetchBookmarks();
     } catch (err) {
       console.error(err);
     }
@@ -504,7 +555,15 @@ export default function DashboardPage() {
             </div>
             <div>
               <span className="text-sm font-extrabold tracking-tight text-white block">ClipMind AI</span>
-              <p className="text-[10px] text-cyan-400 font-mono font-semibold">Intelligence Studio</p>
+              <p className="text-[10px] text-cyan-400 font-mono font-semibold">
+                {user?.role === "learner"
+                  ? "Learner Portal"
+                  : user?.role === "educator"
+                  ? "Educator Studio"
+                  : user?.role === "administrator"
+                  ? "Admin Intelligence Hub"
+                  : "Creator Studio"}
+              </p>
             </div>
           </div>
 
@@ -512,20 +571,40 @@ export default function DashboardPage() {
           <div className="flex items-center gap-4 shrink-0">
             <nav className="flex items-center gap-1.5 glass-panel p-1 rounded-xl">
               <button
-                onClick={() => setActiveTab("library")}
+                onClick={() => {
+                  setActiveTab("library");
+                  setLearnerViewMode("library");
+                }}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
-                  activeTab === "library"
+                  activeTab === "library" && learnerViewMode === "library"
                     ? "glass-button-primary text-white shadow-sm font-bold"
                     : "text-slate-300 hover:text-white hover:bg-white/[0.08]"
                 }`}
               >
-                Videos ({videos.length})
+                {user?.role === "learner" ? `Lectures (${videos.length})` : `Videos (${videos.length})`}
               </button>
+
+              {user?.role === "learner" && (
+                <button
+                  onClick={() => {
+                    setActiveTab("library");
+                    setLearnerViewMode("bookmarks");
+                  }}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                    activeTab === "library" && learnerViewMode === "bookmarks"
+                      ? "glass-button-primary text-white shadow-sm font-bold"
+                      : "text-slate-300 hover:text-white hover:bg-white/[0.08]"
+                  }`}
+                >
+                  Bookmarks ({bookmarks.length})
+                </button>
+              )}
 
               {user?.role !== "learner" && (
                 <button
                   onClick={() => {
                     fetchAnalytics();
+                    fetchAdminJobs();
                     setActiveTab("analytics");
                   }}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
@@ -728,19 +807,105 @@ export default function DashboardPage() {
                 )}
               </div>
             ) : (
-              <div className="glass-card p-6 rounded-2xl flex items-center justify-between">
+              <div className="glass-card p-6 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">Learner Access Mode</h3>
-                  <p className="text-xs text-slate-400 mt-1">Browse processed video recordings, inspect transcripts, read summaries, and view key moments.</p>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <h3 className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">Learner Study Portal</h3>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">Browse educational lectures, search transcripts, and study AI-extracted summaries & chapters.</p>
                 </div>
-                <span className="glass-badge-emerald px-3 py-1.5 font-mono text-[11px] font-bold rounded-xl uppercase">
-                  Learner Portal
-                </span>
+
+                <div className="flex items-center gap-2 glass-panel p-1 rounded-xl">
+                  <button
+                    onClick={() => setLearnerViewMode("library")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      learnerViewMode === "library" ? "glass-button-primary text-white" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    All Lectures ({videos.length})
+                  </button>
+                  <button
+                    onClick={() => setLearnerViewMode("bookmarks")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      learnerViewMode === "bookmarks" ? "glass-button-primary text-white" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    My Bookmarks ({bookmarks.length})
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* Processed Video Repository Container */}
-            <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-6">
+            {/* Learner Bookmarks View */}
+            {user?.role === "learner" && learnerViewMode === "bookmarks" ? (
+              <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-6">
+                <div className="border-b border-white/[0.08] pb-4">
+                  <h2 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
+                    My Bookmarked Lectures & Highlights ({bookmarks.length})
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Your saved study materials. Click "Study in Workstation" to jump directly into playback, notes, and key moments.
+                  </p>
+                </div>
+
+                {bookmarks.length === 0 ? (
+                  <div className="py-16 text-center text-slate-400 text-xs border-2 border-dashed border-white/10 rounded-2xl space-y-2">
+                    <p className="font-bold text-white">No bookmarked lectures yet.</p>
+                    <p className="text-slate-400 text-xs">Click "Bookmark" while studying any video in the workstation to save it here!</p>
+                    <button
+                      onClick={() => setLearnerViewMode("library")}
+                      className="text-xs font-bold text-indigo-400 hover:underline pt-2 inline-block"
+                    >
+                      Browse All Lectures →
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {bookmarks.map((bm) => (
+                      <div
+                        key={bm.bookmark_id}
+                        className="glass-card glass-card-hover p-5 rounded-xl flex flex-col justify-between space-y-3 group"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="px-2 py-0.5 glass-badge-emerald text-[10px] font-mono font-bold rounded">
+                              SAVED
+                            </span>
+                            <button
+                              onClick={() => handleRemoveBookmark(bm.bookmark_id)}
+                              className="text-slate-500 hover:text-rose-400 text-xs font-bold"
+                              title="Remove bookmark"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <h3 className="font-bold text-sm text-white mt-2 group-hover:text-indigo-300 transition line-clamp-1">
+                            {bm.video?.title}
+                          </h3>
+                          <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                            {bm.video?.short_summary || "No summary available."}
+                          </p>
+                        </div>
+
+                        <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-xs">
+                          <span className="font-mono text-[10px] text-cyan-300">
+                            {formatDuration(bm.video?.duration_seconds)}
+                          </span>
+                          <button
+                            onClick={() => handleOpenVideoFromAnalytics(bm.video?.id)}
+                            className="px-3 py-1.5 glass-button-primary text-white text-xs font-bold rounded-lg uppercase tracking-wider"
+                          >
+                            Study Now ↗
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-6">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-white/[0.08] pb-4 relative z-10">
                 <div>
                   <h2 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
@@ -903,6 +1068,7 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
 
@@ -1867,13 +2033,119 @@ export default function DashboardPage() {
                         <tr key={u.id} className="hover:bg-white/[0.04] transition">
                           <td className="py-3.5 px-4 font-bold text-white">{u.name}</td>
                           <td className="py-3.5 px-4 text-slate-400">{u.email}</td>
-                          <td className="py-3.5 px-4 font-mono text-[11px] text-indigo-300 font-bold">
-                            <span className="glass-badge px-2 py-0.5 rounded uppercase">{u.role?.replace("_", " ")}</span>
+                          <td className="py-3.5 px-4 font-mono text-[11px]">
+                            <select
+                              value={u.role}
+                              disabled={updatingUserRoleId === u.id || u.email === user?.email}
+                              onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                              className="glass-input px-2.5 py-1 rounded-lg text-xs font-mono bg-[#070B14] text-white border border-white/15 cursor-pointer disabled:opacity-50"
+                              title={u.email === user?.email ? "Cannot modify your own administrator role" : "Change user role"}
+                            >
+                              <option value="content_creator" className="bg-[#0B1020] text-white">Content Creator</option>
+                              <option value="educator" className="bg-[#0B1020] text-white">Educator</option>
+                              <option value="learner" className="bg-[#0B1020] text-white">Learner</option>
+                              <option value="administrator" className="bg-[#0B1020] text-white">Administrator</option>
+                            </select>
+                            {updatingUserRoleId === u.id && (
+                              <span className="ml-2 text-[10px] text-cyan-300 animate-pulse">Updating...</span>
+                            )}
                           </td>
                           <td className="py-3.5 px-4 font-bold text-emerald-400 font-mono">{u.videos_count}</td>
                           <td className="py-3.5 px-4 text-slate-400 text-[11px]">{new Date(u.created_at).toLocaleString()}</td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TIER 5B: ADMINISTRATOR AI PROCESSING JOBS QUEUE */}
+            {user?.role === "administrator" && (
+              <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-5">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+                  <div>
+                    <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
+                      AI Video Processing Jobs Queue
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Monitor background Whisper STT, Groq LLM summarization, and key-moment extraction jobs across the entire platform.
+                    </p>
+                  </div>
+                  <button
+                    onClick={fetchAdminJobs}
+                    className="glass-button-secondary px-3.5 py-1.5 rounded-lg text-xs font-mono shrink-0"
+                  >
+                    Refresh Jobs
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-200">
+                    <thead className="glass-panel text-slate-400 uppercase text-[10px] font-semibold">
+                      <tr>
+                        <th className="py-3 px-4 rounded-l-lg">Job / Media</th>
+                        <th className="py-3 px-4">Uploaded By</th>
+                        <th className="py-3 px-4">Duration</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4">STT Transcript</th>
+                        <th className="py-3 px-4">AI Summary</th>
+                        <th className="py-3 px-4 rounded-r-lg">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/[0.06]">
+                      {adminJobs && adminJobs.length > 0 ? (
+                        adminJobs.map((j) => (
+                          <tr key={j.id} className="hover:bg-white/[0.04] transition">
+                            <td className="py-3 px-4 font-bold text-white max-w-xs truncate">{j.title}</td>
+                            <td className="py-3 px-4 text-slate-300">
+                              {j.uploader_name}{" "}
+                              <span className="text-[10px] text-slate-500 font-mono">({j.uploader_email})</span>
+                            </td>
+                            <td className="py-3 px-4 font-mono text-[11px] text-cyan-300">
+                              {formatDuration(j.duration_seconds)}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
+                                  j.status === "completed"
+                                    ? "glass-badge-emerald text-emerald-300"
+                                    : j.status === "processing"
+                                    ? "glass-badge-amber text-amber-300 animate-pulse"
+                                    : j.status === "failed"
+                                    ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                                    : "glass-badge"
+                                }`}
+                              >
+                                {j.status}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 font-mono text-[11px]">
+                              {j.has_transcript ? (
+                                <span className="text-emerald-400 font-bold">✓ Extracted</span>
+                              ) : (
+                                <span className="text-slate-500">Pending</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 font-mono text-[11px]">
+                              {j.has_summary ? (
+                                <span className="text-purple-300 font-bold">✓ Generated</span>
+                              ) : (
+                                <span className="text-slate-500">Pending</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-slate-400 text-[11px] font-mono">
+                              {j.created_at ? new Date(j.created_at).toLocaleDateString() : "-"}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="py-6 text-center text-slate-500 italic">
+                            No processing jobs found in queue.
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>

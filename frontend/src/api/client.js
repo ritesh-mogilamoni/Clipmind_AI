@@ -106,6 +106,14 @@ export const videosApi = {
     const response = await api.post(`/videos/${id}/bookmark`, formData);
     return response.data;
   },
+  getMyBookmarks: async () => {
+    const response = await api.get("/videos/bookmarks/me");
+    return response.data;
+  },
+  deleteBookmark: async (bookmarkId) => {
+    const response = await api.delete(`/videos/bookmarks/${bookmarkId}`);
+    return response.data;
+  },
 };
 
 export const analyticsApi = {
@@ -115,6 +123,14 @@ export const analyticsApi = {
   },
   getAdminUserStats: async () => {
     const response = await api.get("/analytics/admin/users");
+    return response.data;
+  },
+  updateUserRole: async (userId, role) => {
+    const response = await api.patch(`/analytics/admin/users/${userId}/role`, { role });
+    return response.data;
+  },
+  getAdminJobs: async () => {
+    const response = await api.get("/analytics/admin/jobs");
     return response.data;
   },
 };

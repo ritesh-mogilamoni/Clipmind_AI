@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.db.postgres import get_db
-from app.db.models import User
+from app.db.models import User, UserRole
 from app.schemas.user import UserCreate, UserResponse, Token
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.deps import get_current_user
@@ -13,13 +13,20 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/signup", response_model=UserResponse)
 def signup(user_in: UserCreate, db: Session = Depends(get_db)):
-    existing_user = db.query(User).filter(User.email == user_in.email).first()
+    if user_in.role == UserRole.administrator:
+        raise HTTPException(
+            status_code=400,
+            detail="Administrator accounts cannot be created via public signup. Please contact your system administrator.",
+        )
+
+    clean_email = user_in.email.strip().lower()
+    existing_user = db.query(User).filter(User.email == clean_email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
     new_user = User(
-        name=user_in.name,
-        email=user_in.email,
+        name=user_in.name.strip(),
+        email=clean_email,
         password_hash=hash_password(user_in.password),
         role=user_in.role,
     )

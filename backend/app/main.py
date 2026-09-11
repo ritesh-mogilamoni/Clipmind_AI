@@ -9,12 +9,53 @@ from app.api import auth, videos, analytics
 
 from fastapi.middleware.cors import CORSMiddleware
 
-# Initialize database tables
+# Initialize database tables and root administrator
 try:
     Base.metadata.create_all(bind=engine)
 except Exception as _db_init_err:
     import logging
     logging.getLogger(__name__).warning(f"Could not auto-create tables on startup: {_db_init_err}")
+
+def seed_root_admin():
+    import logging
+    from app.db.postgres import SessionLocal
+    from app.db.models import User, UserRole
+    from app.core.security import hash_password
+    
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@clipmind.ai").strip().lower()
+    admin_password = os.getenv("ADMIN_PASSWORD", "Admin@12345").strip()
+    admin_name = os.getenv("ADMIN_NAME", "System Administrator").strip()
+
+    db = SessionLocal()
+    try:
+        existing_admin = db.query(User).filter(User.role == UserRole.administrator).first()
+        if not existing_admin:
+            user = db.query(User).filter(User.email == admin_email).first()
+            if user:
+                user.role = UserRole.administrator
+                user.password_hash = hash_password(admin_password)
+            else:
+                user = User(
+                    name=admin_name,
+                    email=admin_email,
+                    password_hash=hash_password(admin_password),
+                    role=UserRole.administrator,
+                )
+                db.add(user)
+            db.commit()
+            logging.info(f"Root Administrator initialized successfully: {admin_email}")
+    except Exception as e:
+        db.rollback()
+        import logging
+        logging.getLogger(__name__).warning(f"Admin seeding notice: {e}")
+    finally:
+        db.close()
+
+try:
+    seed_root_admin()
+except Exception as _seed_err:
+    import logging
+    logging.getLogger(__name__).warning(f"Admin seeding error: {_seed_err}")
 
 app = FastAPI(title="ClipMind AI")
 
