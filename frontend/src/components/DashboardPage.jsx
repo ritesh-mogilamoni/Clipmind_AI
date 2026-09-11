@@ -177,7 +177,13 @@ export default function DashboardPage() {
   // Video Player & References
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
+  const selectedVideoRef = useRef(null);
   const [currentTime, setCurrentTime] = useState(0);
+
+  // Keep selectedVideoRef synchronized with selectedVideo state
+  useEffect(() => {
+    selectedVideoRef.current = selectedVideo;
+  }, [selectedVideo]);
 
   // Analytics State
   const [analytics, setAnalytics] = useState(null);
@@ -185,14 +191,21 @@ export default function DashboardPage() {
 
   const ALLOWED_EXTENSIONS = [".mp4", ".mov", ".avi", ".webm", ".mkv"];
 
-  const fetchVideos = async () => {
+  const fetchVideos = async (targetVideoId = null) => {
     setLoadingVideos(true);
     try {
       const data = await videosApi.listVideos();
       setVideos(data);
-      if (selectedVideo) {
-        const updated = data.find((v) => v.id === selectedVideo.id);
-        if (updated) setSelectedVideo(updated);
+      const currentTargetId = targetVideoId !== undefined && targetVideoId !== null
+        ? targetVideoId
+        : selectedVideoRef.current?.id;
+      if (currentTargetId) {
+        const updated = data.find((v) => v.id === currentTargetId);
+        if (updated) {
+          setSelectedVideo(updated);
+          selectedVideoRef.current = updated;
+          setEditedTranscriptText(updated.transcript_text || "");
+        }
       }
     } catch (err) {
       console.error("Failed to fetch videos:", err);
@@ -221,6 +234,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setVideoError(false);
+    setCurrentTime(0);
     const vid = videoRef.current;
     if (!vid) return;
 
@@ -275,7 +289,7 @@ export default function DashboardPage() {
     setUploadSuccess(false);
 
     try {
-      await videosApi.uploadVideo(title, selectedFile, (progressEvent) => {
+      const createdVideo = await videosApi.uploadVideo(title, selectedFile, (progressEvent) => {
         const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
         setUploadProgress(percent);
       });
@@ -284,8 +298,12 @@ export default function DashboardPage() {
       setTitle("");
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      await fetchVideos();
+      await fetchVideos(createdVideo?.id);
       fetchAnalytics();
+
+      if (createdVideo && createdVideo.id) {
+        handleProcessVideo(createdVideo.id);
+      }
     } catch (err) {
       console.error("Upload failed:", err);
       setUploadError(err.response?.data?.detail || "Upload failed.");
@@ -310,7 +328,7 @@ export default function DashboardPage() {
       setUploadSuccess(true);
       setVideoUrl("");
       setTitle("");
-      await fetchVideos();
+      await fetchVideos(createdVideo?.id);
       fetchAnalytics();
 
       if (createdVideo && createdVideo.id) {
@@ -329,10 +347,12 @@ export default function DashboardPage() {
     setProcessMsg("Processing video with Whisper STT & Groq LLM...");
     try {
       const result = await videosApi.processVideo(videoId);
+      selectedVideoRef.current = result;
       setSelectedVideo(result);
+      setEditedTranscriptText(result.transcript_text || "");
       setActiveTab("details");
       setProcessMsg("Processing completed successfully.");
-      await fetchVideos();
+      await fetchVideos(result.id);
       fetchAnalytics();
     } catch (err) {
       console.error("Processing failed:", err);
@@ -344,6 +364,7 @@ export default function DashboardPage() {
   };
 
   const handleSelectVideo = (video) => {
+    selectedVideoRef.current = video;
     setSelectedVideo(video);
     setEditedTranscriptText(video.transcript_text || "");
     setActiveTab("details");
@@ -354,6 +375,7 @@ export default function DashboardPage() {
     if (!selectedVideo) return;
     try {
       const updated = await videosApi.updateTranscript(selectedVideo.id, editedTranscriptText, selectedVideo.transcript_segments);
+      selectedVideoRef.current = updated;
       setSelectedVideo(updated);
       setIsEditingTranscript(false);
     } catch (err) {
@@ -409,7 +431,10 @@ export default function DashboardPage() {
     if (!window.confirm("Are you sure you want to delete this video?")) return;
     try {
       await videosApi.deleteVideo(videoId);
-      if (selectedVideo?.id === videoId) setSelectedVideo(null);
+      if (selectedVideo?.id === videoId || selectedVideoRef.current?.id === videoId) {
+        setSelectedVideo(null);
+        selectedVideoRef.current = null;
+      }
       await fetchVideos();
       fetchAnalytics();
     } catch (err) {
