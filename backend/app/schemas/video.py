@@ -15,14 +15,19 @@ class TranscriptUpdate(BaseModel):
     transcript_text: str
     segments: Optional[List[Any]] = None
 
+class VideoVisibilityUpdate(BaseModel):
+    visibility: str
+
 class VideoResponse(BaseModel):
     id: UUID
+    uploaded_by: UUID
     title: str
     original_filename: str
     duration_seconds: Optional[float]
     format: Optional[str]
     file_size_bytes: Optional[int]
     status: VideoStatus
+    visibility: Optional[str] = "public"
     transcript_text: Optional[str] = None
     transcript_segments: Optional[List[Any]] = None
     short_summary: Optional[str] = None

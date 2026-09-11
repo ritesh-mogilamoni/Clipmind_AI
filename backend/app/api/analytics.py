@@ -23,9 +23,13 @@ def get_dashboard_analytics(
     """
     if current_user.role == UserRole.administrator:
         video_query = db.query(Video)
+    elif current_user.role == UserRole.content_creator:
+        video_query = db.query(Video).filter(Video.uploaded_by == current_user.id)
+    elif current_user.role == UserRole.educator:
+        video_query = db.query(Video).filter(Video.uploaded_by == current_user.id)
     else:
         video_query = db.query(Video).filter(
-            (Video.uploaded_by == current_user.id) | (Video.status == VideoStatus.completed)
+            (Video.visibility == "public") & (Video.status == VideoStatus.completed)
         )
 
     all_videos = video_query.order_by(Video.created_at.desc()).all()
@@ -142,6 +146,27 @@ def get_dashboard_analytics(
             "total_system_videos": db.query(Video).count(),
         }
 
+    classroom_engagement = []
+    if current_user.role in {UserRole.educator, UserRole.administrator}:
+        my_video_ids = {str(v.id) for v in all_videos}
+        study_logs = (
+            db.query(ActivityLog)
+            .filter(ActivityLog.action == "study_video")
+            .order_by(ActivityLog.created_at.desc())
+            .limit(50)
+            .all()
+        )
+        for log in study_logs:
+            vid_id = (log.extra_data or {}).get("video_id")
+            if current_user.role == UserRole.administrator or (vid_id and vid_id in my_video_ids):
+                student = db.query(User).filter(User.id == log.user_id).first()
+                classroom_engagement.append({
+                    "student_name": student.name if student else "Anonymous Learner",
+                    "student_email": student.email if student else "N/A",
+                    "lecture_title": (log.extra_data or {}).get("title", "Course Lecture"),
+                    "studied_at": log.created_at.isoformat() if log.created_at else None,
+                })
+
     from app.services.cloudinary_service import is_cloudinary_configured
     system_settings = {
         "storage_provider": "Cloudinary CDN (Active & Connected)" if is_cloudinary_configured() else "Local Filesystem Storage (uploads/)",
@@ -171,6 +196,7 @@ def get_dashboard_analytics(
         "top_keywords": top_keywords,
         "video_reports": video_reports,
         "recent_activities": activities,
+        "classroom_engagement": classroom_engagement,
         "admin_metrics": admin_metrics,
         "system_settings": system_settings,
     }

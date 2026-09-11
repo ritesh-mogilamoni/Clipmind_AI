@@ -237,11 +237,28 @@ export default function DashboardPage() {
   const [adminJobs, setAdminJobs] = useState([]);
   const [updatingUserRoleId, setUpdatingUserRoleId] = useState(null);
   const [learnerViewMode, setLearnerViewMode] = useState("library"); // "library", "bookmarks", or "history"
+  const [creatorCatalogMode, setCreatorCatalogMode] = useState("my_uploads"); // "my_uploads" or "explore"
 
   // Learning History, Profile & Sharing State
   const [studyHistory, setStudyHistory] = useState([]);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [shareSuccessToast, setShareSuccessToast] = useState("");
+
+  const handleToggleVisibility = async (videoId, currentVisibility) => {
+    const nextVis = currentVisibility === "private" ? "public" : "private";
+    try {
+      await videosApi.updateVisibility(videoId, nextVis);
+      setVideos((prev) =>
+        prev.map((v) => (v.id === videoId ? { ...v, visibility: nextVis } : v))
+      );
+      if (selectedVideo?.id === videoId) {
+        setSelectedVideo((prev) => ({ ...prev, visibility: nextVis }));
+      }
+    } catch (err) {
+      console.error("Failed to toggle visibility:", err);
+      alert(err.response?.data?.detail || "Failed to update video visibility.");
+    }
+  };
 
   const fetchBookmarks = async () => {
     try {
@@ -449,10 +466,10 @@ export default function DashboardPage() {
       .slice(0, 5)
       .map((km) => `• [${km.timestamp}] ${km.title}: ${km.description || ""}`)
       .join("\n");
-    const shareText = `📚 LECTURE STUDY GUIDE: ${selectedVideo.title}\n\n` +
-      `📌 Executive Summary:\n${selectedVideo.short_summary || "Summary pending."}\n\n` +
-      `⏱️ Key Chapters:\n${keyMomentsText || "Review transcript for chapters."}\n\n` +
-      `🔗 Study in ClipMind AI Studio: ${directUrl}`;
+    const shareText = `LECTURE STUDY GUIDE: ${selectedVideo.title}\n\n` +
+      `Executive Summary:\n${selectedVideo.short_summary || "Summary pending."}\n\n` +
+      `Key Chapters:\n${keyMomentsText || "Review transcript for chapters."}\n\n` +
+      `Study in ClipMind AI Studio: ${directUrl}`;
 
     if (navigator.clipboard) {
       navigator.clipboard.writeText(shareText).then(() => {
@@ -564,6 +581,15 @@ export default function DashboardPage() {
   };
 
   const filteredVideos = videos.filter((vid) => {
+    if (user?.role === "content_creator" || user?.role === "educator") {
+      if (creatorCatalogMode === "my_uploads" && vid.uploaded_by !== user?.id) {
+        return false;
+      }
+      if (creatorCatalogMode === "explore" && (vid.uploaded_by === user?.id || vid.visibility !== "public")) {
+        return false;
+      }
+    }
+
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     const titleMatch = vid.title?.toLowerCase().includes(q);
@@ -665,9 +691,12 @@ export default function DashboardPage() {
                       document.getElementById("admin-management")?.scrollIntoView({ behavior: "smooth" });
                     }, 100);
                   }}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-purple-300 hover:text-white hover:bg-purple-500/20 border border-purple-500/30 transition-all duration-200"
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-purple-300 hover:text-white hover:bg-purple-500/20 border border-purple-500/30 transition-all duration-200 flex items-center gap-1.5"
                 >
-                  Admin & Roles ⚡
+                  <svg className="w-3.5 h-3.5 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <span>Admin & Roles</span>
                 </button>
               )}
             </nav>
@@ -680,7 +709,9 @@ export default function DashboardPage() {
               >
                 <span className="block font-semibold text-white text-xs group-hover:text-indigo-300 transition flex items-center gap-1">
                   {user?.name}
-                  <span className="text-[10px] text-indigo-400">👤</span>
+                  <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
                 </span>
                 <span className="inline-block px-2 py-0.5 text-[9px] font-mono font-bold text-indigo-300 glass-badge rounded uppercase">
                   {user?.role?.replace("_", " ")}
@@ -702,7 +733,11 @@ export default function DashboardPage() {
       {/* SHARE SUCCESS TOAST */}
       {shareSuccessToast && (
         <div className="fixed top-16 right-6 z-50 bg-emerald-600/95 text-white px-5 py-3 rounded-2xl shadow-[0_10px_35px_rgba(16,185,129,0.5)] backdrop-blur-md text-xs font-semibold flex items-center gap-2.5 border border-emerald-400/50 animate-bounce">
-          <span className="w-5 h-5 rounded-full bg-white text-emerald-600 font-bold flex items-center justify-center text-xs">✓</span>
+          <span className="w-5 h-5 rounded-full bg-white text-emerald-600 font-bold flex items-center justify-center text-xs">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+            </svg>
+          </span>
           <span>{shareSuccessToast}</span>
         </div>
       )}
@@ -715,7 +750,9 @@ export default function DashboardPage() {
               onClick={() => setShowProfileModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-white text-sm font-bold w-7 h-7 rounded-full bg-white/10 flex items-center justify-center transition"
             >
-              ✕
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
             
             <div className="flex items-center gap-4 border-b border-white/[0.08] pb-4">
@@ -1016,7 +1053,9 @@ export default function DashboardPage() {
                               className="text-slate-500 hover:text-rose-400 text-xs font-bold"
                               title="Remove bookmark"
                             >
-                              ✕
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
                             </button>
                           </div>
                           <h3 className="font-bold text-sm text-white mt-2 group-hover:text-indigo-300 transition line-clamp-1">
@@ -1115,12 +1154,59 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-6">
+              
+              {/* Creator & Educator Catalog Switcher */}
+              {(user?.role === "content_creator" || user?.role === "educator") && (
+                <div className="flex flex-wrap items-center justify-between gap-3 p-1.5 bg-white/[0.04] rounded-2xl border border-white/[0.08]">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setCreatorCatalogMode("my_uploads")}
+                      className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all duration-200 flex items-center gap-2 ${
+                        creatorCatalogMode === "my_uploads"
+                          ? "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/40"
+                          : "text-slate-400 hover:text-white hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                      </svg>
+                      <span>My Uploads ({videos.filter((v) => v.uploaded_by === user?.id).length})</span>
+                    </button>
+                    <button
+                      onClick={() => setCreatorCatalogMode("explore")}
+                      className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all duration-200 flex items-center gap-2 ${
+                        creatorCatalogMode === "explore"
+                          ? "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/40"
+                          : "text-slate-400 hover:text-white hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                      </svg>
+                      <span>Explore Community ({videos.filter((v) => v.uploaded_by !== user?.id && v.visibility === "public").length})</span>
+                    </button>
+                  </div>
+
+                  <span className="text-[11px] text-slate-400 font-mono px-2 hidden sm:inline-block">
+                    {creatorCatalogMode === "my_uploads" ? "Manage and edit your uploads" : "Watch & study public lectures from other creators"}
+                  </span>
+                </div>
+              )}
+
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-white/[0.08] pb-4 relative z-10">
                 <div>
                   <h2 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
-                    Processed Video Repository ({filteredVideos.length}{searchQuery && ` of ${videos.length}`})
+                    {user?.role === "administrator"
+                      ? `System Video Repository (${filteredVideos.length})`
+                      : creatorCatalogMode === "explore"
+                      ? `Community Videos (${filteredVideos.length})`
+                      : `My Video Library (${filteredVideos.length})`}
                   </h2>
-                  <p className="text-xs text-slate-400 mt-1">Select a video item to access transcript, summaries, and key moments.</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {creatorCatalogMode === "explore"
+                      ? "Browse, watch, and search transcripts of publicly published videos."
+                      : "Manage your videos, run AI processing, toggle privacy, and review transcripts."}
+                  </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
@@ -1142,7 +1228,9 @@ export default function DashboardPage() {
                         className="absolute right-2.5 top-2 text-slate-400 hover:text-white text-xs font-bold w-4 h-4 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 transition"
                         title="Clear search"
                       >
-                        ✕
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
                       </button>
                     )}
                   </div>
@@ -1160,11 +1248,20 @@ export default function DashboardPage() {
                 <div className="py-16 text-center text-slate-400 text-xs font-mono">Loading video collection...</div>
               ) : filteredVideos.length === 0 ? (
                 <div className="py-16 text-center text-slate-400 text-xs border-2 border-dashed border-white/10 rounded-2xl space-y-2">
-                  <p className="font-bold text-white">No matching videos found.</p>
+                  <p className="font-bold text-white">
+                    {creatorCatalogMode === "explore"
+                      ? "No community videos available yet."
+                      : "No videos uploaded yet."}
+                  </p>
+                  <p className="text-slate-400 text-xs">
+                    {creatorCatalogMode === "explore"
+                      ? "When other creators or educators publish public videos, they will appear here."
+                      : "Upload a video above or import a video URL to get started."}
+                  </p>
                   {searchQuery && (
                     <button
                       onClick={() => setSearchQuery("")}
-                      className="text-xs text-indigo-400 font-semibold hover:underline"
+                      className="text-xs text-indigo-400 font-semibold hover:underline pt-2 block"
                     >
                       Clear search filter "{searchQuery}"
                     </button>
@@ -1202,10 +1299,50 @@ export default function DashboardPage() {
 
                         {/* Title & Info */}
                         <div className="space-y-2 flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-3">
+                          <div className="flex flex-wrap items-center gap-2.5">
                             <h3 className="font-bold text-sm text-white group-hover:text-indigo-300 transition leading-snug truncate">
                               {vid.title}
                             </h3>
+
+                            {/* Visibility Badge & Toggle */}
+                            {vid.uploaded_by === user?.id ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleVisibility(vid.id, vid.visibility || "public");
+                                }}
+                                className={`px-2.5 py-0.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider border flex items-center gap-1 transition ${
+                                  vid.visibility === "private"
+                                    ? "bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25"
+                                    : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25"
+                                }`}
+                                title={`Click to change visibility to ${vid.visibility === "private" ? "Public" : "Private"}`}
+                              >
+                                {vid.visibility === "private" ? (
+                                  <>
+                                    <svg className="w-3 h-3 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                    </svg>
+                                    <span>Private</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-3 h-3 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span>Public</span>
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-lg text-[10px] font-mono text-slate-400 bg-white/[0.04] border border-white/[0.08] flex items-center gap-1">
+                                <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span>Public</span>
+                              </span>
+                            )}
+
                             {vid.status !== "completed" && (
                               <span
                                 className={`px-2.5 py-0.5 rounded-lg text-[10px] font-mono uppercase tracking-wider shrink-0 border ${
@@ -1223,6 +1360,12 @@ export default function DashboardPage() {
                             <span>File Size: <strong className="text-white">{formatBytes(vid.file_size_bytes)}</strong></span>
                             <span>•</span>
                             <span>Uploaded: <strong className="text-slate-300">{new Date(vid.created_at).toLocaleDateString()}</strong></span>
+                            {vid.uploaded_by !== user?.id && (
+                              <>
+                                <span>•</span>
+                                <span className="text-cyan-400">Community Upload</span>
+                              </>
+                            )}
                           </div>
 
                           {/* Keywords */}
@@ -1240,8 +1383,23 @@ export default function DashboardPage() {
 
                       {/* Right Action Buttons */}
                       <div className="flex items-center gap-3 shrink-0 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-white/[0.08]">
+                        {vid.status === "completed" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectVideo(vid);
+                            }}
+                            className="px-4 py-2 glass-button-primary text-white rounded-xl text-xs font-bold uppercase tracking-wider whitespace-nowrap flex items-center gap-1.5"
+                          >
+                            <span>Open</span>
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                            </svg>
+                          </button>
+                        )}
+
                         {vid.status !== "completed" && (
-                          (user?.role === "administrator" || user?.role === "content_creator" || user?.role === "educator" || vid.uploaded_by === user?.id) ? (
+                          (user?.role === "administrator" || vid.uploaded_by === user?.id) ? (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1305,10 +1463,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                {(user?.role === "administrator" ||
-                  user?.role === "content_creator" ||
-                  user?.role === "educator" ||
-                  selectedVideo.uploaded_by === user?.id) && (
+                {(user?.role === "administrator" || selectedVideo.uploaded_by === user?.id) && (
                   <button
                     onClick={() => handleProcessVideo(selectedVideo.id)}
                     disabled={processingId === selectedVideo.id}
@@ -1327,26 +1482,35 @@ export default function DashboardPage() {
                   {isBookmarked ? "Bookmarked" : "Bookmark"}
                 </button>
 
-                <button
-                  onClick={handleShareWithStudents}
-                  className="px-3 py-1.5 glass-button-secondary hover:border-indigo-400/50 hover:text-indigo-300 rounded-lg text-xs font-semibold flex items-center gap-1.5"
-                  title="Copy formatted study guide to clipboard to share with students"
-                >
-                  <span>Share with Students 📤</span>
-                </button>
+                {(user?.role === "educator" || user?.role === "administrator") && (
+                  <button
+                    onClick={handleShareWithStudents}
+                    className="px-3 py-1.5 glass-button-secondary hover:border-indigo-400/50 hover:text-indigo-300 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                    title="Copy formatted study guide to clipboard to share with students"
+                  >
+                    <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                    </svg>
+                    <span>Share with Students</span>
+                  </button>
+                )}
 
-                <button
-                  onClick={() => handleExport("txt")}
-                  className="px-3 py-1.5 glass-button-secondary rounded-lg text-xs font-semibold"
-                >
-                  Export TXT
-                </button>
-                <button
-                  onClick={() => handleExport("json")}
-                  className="px-3 py-1.5 glass-button-secondary rounded-lg text-xs font-semibold"
-                >
-                  Export JSON
-                </button>
+                {(user?.role === "content_creator" || user?.role === "educator" || user?.role === "administrator") && (
+                  <>
+                    <button
+                      onClick={() => handleExport("txt")}
+                      className="px-3 py-1.5 glass-button-secondary rounded-lg text-xs font-semibold"
+                    >
+                      Export TXT
+                    </button>
+                    <button
+                      onClick={() => handleExport("json")}
+                      className="px-3 py-1.5 glass-button-secondary rounded-lg text-xs font-semibold"
+                    >
+                      Export JSON
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -1412,8 +1576,10 @@ export default function DashboardPage() {
                   <div className="bg-black/90 rounded-lg overflow-hidden flex-1 min-h-0 flex items-center justify-center border border-white/10 shadow-inner relative">
                     {videoError ? (
                       <div className="p-6 text-center flex flex-col items-center justify-center space-y-2.5">
-                        <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-lg">
-                          ⚠️
+                        <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
                         </div>
                         <div className="text-xs font-semibold text-slate-200">
                           Video Playback Error
@@ -1475,7 +1641,7 @@ export default function DashboardPage() {
                         className="px-2.5 py-1 glass-input rounded-lg text-xs w-32 sm:w-40"
                       />
 
-                      {(user?.role === "educator" || user?.role === "content_creator" || user?.role === "administrator") && (
+                      {(user?.role === "administrator" || selectedVideo.uploaded_by === user?.id) && (
                         <button
                           onClick={() => {
                             if (isEditingTranscript) {
@@ -1828,7 +1994,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* TIER 2: AI CONTENT INSIGHTS ⭐ (Top Topics & Extraction Health) */}
+            {/* TIER 2: AI CONTENT INSIGHTS (Top Topics & Extraction Health) */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
               
               {/* Left 6 cols: Top Topics & Keywords Cloud */}
@@ -1837,7 +2003,9 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-amber-400 text-xs">⭐</span>
+                        <svg className="w-3.5 h-3.5 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                        </svg>
                         <h3 className="text-xs font-mono font-bold text-purple-300 uppercase tracking-wider">
                           AI Content Insights: Top Topics
                         </h3>
@@ -1848,9 +2016,12 @@ export default function DashboardPage() {
                     {selectedTopicFilter && (
                       <button
                         onClick={() => setSelectedTopicFilter(null)}
-                        className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 px-2 py-1 rounded-lg border border-cyan-500/30"
+                        className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/30 flex items-center gap-1"
                       >
-                        Clear Filter ✕
+                        <span>Clear Filter</span>
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
                       </button>
                     )}
                   </div>
@@ -2046,7 +2217,10 @@ export default function DashboardPage() {
                             <td className="py-3.5 px-4">
                               {rep.has_transcript ? (
                                 <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 font-bold">
-                                  ✓ Generated
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>Generated</span>
                                 </span>
                               ) : (
                                 <span className="text-[11px] font-mono text-slate-500">Pending</span>
@@ -2055,7 +2229,10 @@ export default function DashboardPage() {
                             <td className="py-3.5 px-4">
                               {rep.has_summary ? (
                                 <span className="inline-flex items-center gap-1 text-[11px] font-mono text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-md border border-purple-500/20 font-bold">
-                                  ✓ Generated
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>Generated</span>
                                 </span>
                               ) : (
                                 <span className="text-[11px] font-mono text-slate-500">Pending</span>
@@ -2228,6 +2405,57 @@ export default function DashboardPage() {
               );
             })()}
 
+            {/* CLASSROOM CONTENT ANALYTICS & STUDENT ENGAGEMENT (For Educators and Administrators) */}
+            {(user?.role === "educator" || user?.role === "administrator") && analytics?.classroom_engagement && (
+              <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-5">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+                  <div>
+                    <h3 className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-widest">
+                      Classroom Content Analytics & Student Engagement
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Monitor learner study activity, engagement events, and completion history across course lectures.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 glass-badge font-mono text-[11px] font-bold rounded-lg text-cyan-300">
+                    {analytics.classroom_engagement.length} Study Events Logged
+                  </span>
+                </div>
+
+                {analytics.classroom_engagement.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 text-xs border border-dashed border-white/10 rounded-xl space-y-1">
+                    <p className="font-bold text-white">No student study activity recorded yet.</p>
+                    <p className="text-slate-400 text-xs">When learners open and study your lectures, their engagement will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs text-slate-200">
+                      <thead className="glass-panel text-slate-400 uppercase text-[10px] font-semibold">
+                        <tr>
+                          <th className="py-3 px-4 rounded-l-lg">Student Name</th>
+                          <th className="py-3 px-4">Student Email</th>
+                          <th className="py-3 px-4">Lecture Studied</th>
+                          <th className="py-3 px-4 rounded-r-lg">Activity Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.06]">
+                        {analytics.classroom_engagement.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-white/[0.04] transition">
+                            <td className="py-3.5 px-4 font-bold text-white">{item.student_name}</td>
+                            <td className="py-3.5 px-4 text-slate-400 font-mono">{item.student_email}</td>
+                            <td className="py-3.5 px-4 text-indigo-300 font-medium">{item.lecture_title}</td>
+                            <td className="py-3.5 px-4 font-mono text-[11px] text-slate-400">
+                              {item.studied_at ? new Date(item.studied_at).toLocaleString() : "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* TIER 5: ADMINISTRATOR USER MANAGEMENT & SYSTEM HEALTH */}
             {user?.role === "administrator" && (
               <div id="admin-management" className="glass-card p-6 sm:p-7 rounded-2xl space-y-5 scroll-mt-24">
@@ -2358,14 +2586,24 @@ export default function DashboardPage() {
                             </td>
                             <td className="py-3 px-4 font-mono text-[11px]">
                               {j.has_transcript ? (
-                                <span className="text-emerald-400 font-bold">✓ Extracted</span>
+                                <span className="text-emerald-400 font-bold inline-flex items-center gap-1">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>Extracted</span>
+                                </span>
                               ) : (
                                 <span className="text-slate-500">Pending</span>
                               )}
                             </td>
                             <td className="py-3 px-4 font-mono text-[11px]">
                               {j.has_summary ? (
-                                <span className="text-purple-300 font-bold">✓ Generated</span>
+                                <span className="text-purple-300 font-bold inline-flex items-center gap-1">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>Generated</span>
+                                </span>
                               ) : (
                                 <span className="text-slate-500">Pending</span>
                               )}

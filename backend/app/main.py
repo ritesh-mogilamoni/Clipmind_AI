@@ -14,6 +14,7 @@ try:
     Base.metadata.create_all(bind=engine)
     with engine.connect() as _conn:
         _conn.execute(text("ALTER TABLE videos ADD COLUMN IF NOT EXISTS study_materials JSON;"))
+        _conn.execute(text("ALTER TABLE videos ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) DEFAULT 'public';"))
         _conn.commit()
 except Exception as _db_init_err:
     import logging

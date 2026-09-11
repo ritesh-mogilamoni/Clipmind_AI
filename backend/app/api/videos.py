@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from app.db.postgres import get_db
-from app.db.models import User, Video, VideoStatus, Bookmark, ActivityLog, UserRole
-from app.schemas.video import VideoResponse, TranscriptUpdate, URLImportRequest
+from app.db.models import User, Video, VideoStatus, VideoVisibility, Bookmark, ActivityLog, UserRole
+from app.schemas.video import VideoResponse, TranscriptUpdate, URLImportRequest, VideoVisibilityUpdate
 from app.core.deps import get_current_user
 from app.services.video_processing import get_video_metadata
 from app.services.transcription import transcribe_video
@@ -30,6 +30,7 @@ ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".webm", ".mkv"}
 def upload_video(
     title: str = Form(...),
     file: UploadFile = File(...),
+    visibility: Optional[str] = Form("public"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -44,35 +45,45 @@ def upload_video(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
+            detail=f"Unsupported file format '{ext}'. Allowed extensions: {', '.join(ALLOWED_EXTENSIONS)}",
         )
 
-    unique_filename = f"{uuid.uuid4()}{ext}"
-    file_path = os.path.join(UPLOAD_DIR, unique_filename)
-
+    # Validate file size
+    file_size = 0
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    file_size = os.path.getsize(file_path)
+    video_id = uuid.uuid4()
+    local_file_path = os.path.join(UPLOAD_DIR, f"{video_id}{ext}")
 
     try:
-        metadata = get_video_metadata(file_path)
-    except Exception:
-        metadata = {"duration_seconds": None, "format": None}
+        with open(local_file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        file_size = os.path.getsize(local_file_path)
+    except Exception as e:
+        logger.error(f"Failed to save uploaded file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save video file")
 
-    video_id = uuid.uuid4()
-    storage_path = file_path
+    if file_size > 500 * 1024 * 1024:  # 500 MB limit
+        if os.path.exists(local_file_path):
+            os.remove(local_file_path)
+        raise HTTPException(status_code=400, detail="File size exceeds the 500MB maximum limit")
 
-    # If Cloudinary is configured, upload permanently to Cloudinary
+    try:
+        metadata = get_video_metadata(local_file_path)
+    except Exception as e:
+        logger.warning(f"Failed to extract metadata via ffprobe: {e}")
+        metadata = {"duration_seconds": None, "format": ext.replace(".", "").upper()}
+
+    storage_path = local_file_path
     if is_cloudinary_configured():
-        cld_res = upload_video_to_cloudinary(file_path, public_id=str(video_id))
+        cld_res = upload_video_to_cloudinary(local_file_path, public_id=str(video_id))
         if cld_res and cld_res.get("secure_url"):
             storage_path = cld_res.get("secure_url")
             if not metadata.get("duration_seconds") and cld_res.get("duration"):
                 metadata["duration_seconds"] = float(cld_res.get("duration"))
-            if not metadata.get("format") and cld_res.get("format"):
-                metadata["format"] = str(cld_res.get("format")).upper()
+
+    clean_visibility = (visibility or "public").strip().lower()
+    if clean_visibility not in {VideoVisibility.public.value, VideoVisibility.private.value, VideoVisibility.unlisted.value}:
+        clean_visibility = VideoVisibility.public.value
 
     new_video = Video(
         id=video_id,
@@ -84,6 +95,7 @@ def upload_video(
         format=metadata["format"],
         file_size_bytes=file_size,
         status=VideoStatus.uploaded,
+        visibility=clean_visibility,
     )
     
     try:
@@ -217,6 +229,7 @@ def import_video_url(
         format=metadata["format"] or os.path.splitext(downloaded_file)[1].replace(".", "").upper(),
         file_size_bytes=file_size,
         status=VideoStatus.uploaded,
+        visibility=VideoVisibility.public.value,
     )
 
     try:
@@ -244,14 +257,30 @@ def list_videos(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Retrieve all videos. Administrators can view all videos; other roles view their videos or accessible videos.
+    Retrieve videos with visibility and ownership filtering:
+    - Administrators: view all videos.
+    - Content Creators & Educators: view their own uploaded videos (private + public) AND public videos from other users.
+    - Learners: view public completed videos.
     """
     if current_user.role == UserRole.administrator:
         videos = db.query(Video).order_by(Video.created_at.desc()).all()
-    else:
+    elif current_user.role in {UserRole.content_creator, UserRole.educator}:
         videos = (
             db.query(Video)
-            .filter((Video.uploaded_by == current_user.id) | (Video.status == VideoStatus.completed))
+            .filter(
+                (Video.uploaded_by == current_user.id)
+                | (Video.visibility == VideoVisibility.public.value)
+            )
+            .order_by(Video.created_at.desc())
+            .all()
+        )
+    else:  # Learner
+        videos = (
+            db.query(Video)
+            .filter(
+                (Video.visibility == VideoVisibility.public.value)
+                & (Video.status == VideoStatus.completed)
+            )
             .order_by(Video.created_at.desc())
             .all()
         )
@@ -353,6 +382,36 @@ def get_video(
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
+
+    if getattr(video, "visibility", "public") == VideoVisibility.private.value:
+        if str(video.uploaded_by) != str(current_user.id) and current_user.role != UserRole.administrator:
+            raise HTTPException(status_code=403, detail="This video is private and only accessible to its owner.")
+
+    return video
+
+
+@router.patch("/{video_id}/visibility", response_model=VideoResponse)
+def update_video_visibility(
+    video_id: uuid.UUID,
+    payload: VideoVisibilityUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update visibility of a video (public, private, or unlisted). Owner or Admin only."""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    if str(video.uploaded_by) != str(current_user.id) and current_user.role != UserRole.administrator:
+        raise HTTPException(status_code=403, detail="Not authorized to modify visibility of this video")
+
+    target_vis = payload.visibility.strip().lower()
+    if target_vis not in {VideoVisibility.public.value, VideoVisibility.private.value, VideoVisibility.unlisted.value}:
+        raise HTTPException(status_code=400, detail="Invalid visibility. Must be 'public', 'private', or 'unlisted'.")
+
+    video.visibility = target_vis
+    db.commit()
+    db.refresh(video)
     return video
 
 
@@ -362,12 +421,31 @@ import mimetypes
 def get_video_file(
     video_id: uuid.UUID,
     request: Request,
+    token: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     """Stream video file for HTML5 video player with HTTP Range (seeking) support."""
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video record not found")
+
+    if getattr(video, "visibility", "public") == VideoVisibility.private.value:
+        auth_header = request.headers.get("Authorization")
+        raw_token = token
+        if not raw_token and auth_header and auth_header.startswith("Bearer "):
+            raw_token = auth_header.split(" ")[1]
+
+        authorized = False
+        if raw_token:
+            from app.core.security import decode_access_token
+            payload = decode_access_token(raw_token)
+            if payload and payload.get("sub"):
+                caller = db.query(User).filter(User.id == payload.get("sub")).first()
+                if caller and (str(caller.id) == str(video.uploaded_by) or caller.role == UserRole.administrator):
+                    authorized = True
+
+        if not authorized:
+            raise HTTPException(status_code=403, detail="Access denied to private video stream.")
 
     # If video is stored in Cloudinary or remote CDN, redirect directly to the stream (guaranteeing .mp4 for browser playback)
     if video.storage_path and (video.storage_path.startswith("http://") or video.storage_path.startswith("https://")):
@@ -465,6 +543,12 @@ def process_video(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
+    if str(video.uploaded_by) != str(current_user.id) and current_user.role != UserRole.administrator:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only run AI processing on videos you have uploaded.",
+        )
+
     video.status = VideoStatus.processing
     db.commit()
 
@@ -534,6 +618,12 @@ def update_transcript(
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
+
+    if str(video.uploaded_by) != str(current_user.id) and current_user.role != UserRole.administrator:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only edit transcripts for videos you have uploaded.",
+        )
 
     video.transcript_text = payload.transcript_text
     if payload.segments is not None:

@@ -100,6 +100,10 @@ export const videosApi = {
     const response = await api.delete(`/videos/${id}`);
     return response.data;
   },
+  updateVisibility: async (id, visibility) => {
+    const response = await api.patch(`/videos/${id}/visibility`, { visibility });
+    return response.data;
+  },
   bookmarkVideo: async (id, note) => {
     const formData = new FormData();
     if (note) formData.append("note", note);

@@ -53,6 +53,12 @@ class UserRole(str, enum.Enum):
     administrator = "administrator"
 
 
+class VideoVisibility(str, enum.Enum):
+    public = "public"
+    private = "private"
+    unlisted = "unlisted"
+
+
 class VideoStatus(str, enum.Enum):
     uploaded = "uploaded"
     processing = "processing"
@@ -89,6 +95,7 @@ class Video(Base):
     format = Column(String, nullable=True)
     file_size_bytes = Column(BigInteger, nullable=True)
     status = Column(Enum(VideoStatus), default=VideoStatus.uploaded)
+    visibility = Column(String, default=VideoVisibility.public.value, nullable=False)
 
     # AI Processed Outputs
     transcript_text = Column(Text, nullable=True)
