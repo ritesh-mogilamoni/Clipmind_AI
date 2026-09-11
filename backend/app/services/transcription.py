@@ -12,10 +12,12 @@ logger = logging.getLogger(__name__)
 
 def extract_audio(video_path: str) -> str:
     """
-    Extracts audio from video file to a temporary MP3 file using FFmpeg.
+    Extracts audio from video file (or video URL) to a temporary MP3 file using FFmpeg.
     Ensures output is under Groq/OpenAI's 25MB upload limit.
     """
-    audio_path = os.path.splitext(video_path)[0] + "_audio.mp3"
+    import uuid
+    os.makedirs("uploads", exist_ok=True)
+    audio_path = os.path.join("uploads", f"temp_audio_{uuid.uuid4().hex[:10]}.mp3")
     command = [
         "ffmpeg",
         "-y",

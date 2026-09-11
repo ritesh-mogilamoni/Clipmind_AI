@@ -64,7 +64,10 @@ export const videosApi = {
     const response = await api.get(`/videos/${id}`);
     return response.data;
   },
-  getVideoFileUrl: (id) => {
+  getVideoFileUrl: (id, video = null) => {
+    if (video && video.storage_path && (video.storage_path.startsWith("http://") || video.storage_path.startsWith("https://"))) {
+      return video.storage_path;
+    }
     const token = typeof window !== "undefined" ? localStorage.getItem("clipmind_token") : "";
     return `${API_BASE_URL}/videos/${id}/file?token=${token}`;
   },

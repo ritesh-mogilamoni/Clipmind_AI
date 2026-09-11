@@ -994,7 +994,7 @@ export default function DashboardPage() {
                           Unable to stream this video file from the server.
                         </p>
                         <a
-                          href={videosApi.getVideoFileUrl(selectedVideo.id)}
+                          href={videosApi.getVideoFileUrl(selectedVideo.id, selectedVideo)}
                           target="_blank"
                           rel="noreferrer"
                           className="text-[11px] text-cyan-400 hover:text-cyan-300 underline font-mono inline-block pt-1"
@@ -1010,7 +1010,7 @@ export default function DashboardPage() {
                         playsInline
                         preload="metadata"
                         className="w-full h-full object-contain rounded-lg"
-                        src={videosApi.getVideoFileUrl(selectedVideo.id)}
+                        src={videosApi.getVideoFileUrl(selectedVideo.id, selectedVideo)}
                         onError={(e) => {
                           console.error("Video load error:", videoRef.current?.error, videoRef.current?.src);
                           setVideoError(true);

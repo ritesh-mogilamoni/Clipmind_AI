@@ -3,7 +3,7 @@ import shutil
 import uuid
 import logging
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Response, Query, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
 import re
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -16,6 +16,7 @@ from app.services.video_processing import get_video_metadata
 from app.services.transcription import transcribe_video
 from app.services.summarization import generate_summaries_and_keywords
 from app.services.key_moments import extract_key_moments
+from app.services.cloudinary_service import upload_video_to_cloudinary, is_cloudinary_configured
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +56,24 @@ def upload_video(
         metadata = {"duration_seconds": None, "format": None}
 
     video_id = uuid.uuid4()
+    storage_path = file_path
+
+    # If Cloudinary is configured, upload permanently to Cloudinary
+    if is_cloudinary_configured():
+        cld_res = upload_video_to_cloudinary(file_path, public_id=str(video_id))
+        if cld_res and cld_res.get("secure_url"):
+            storage_path = cld_res.get("secure_url")
+            if not metadata.get("duration_seconds") and cld_res.get("duration"):
+                metadata["duration_seconds"] = float(cld_res.get("duration"))
+            if not metadata.get("format") and cld_res.get("format"):
+                metadata["format"] = str(cld_res.get("format")).upper()
+
     new_video = Video(
         id=video_id,
         uploaded_by=current_user.id,
         title=title,
         original_filename=file.filename,
-        storage_path=file_path,
+        storage_path=storage_path,
         duration_seconds=metadata["duration_seconds"],
         format=metadata["format"],
         file_size_bytes=file_size,
@@ -173,12 +186,21 @@ def import_video_url(
         metadata = {"duration_seconds": None, "format": None}
 
     video_id = uuid.uuid4()
+    storage_path = downloaded_file
+
+    if is_cloudinary_configured():
+        cld_res = upload_video_to_cloudinary(downloaded_file, public_id=str(video_id))
+        if cld_res and cld_res.get("secure_url"):
+            storage_path = cld_res.get("secure_url")
+            if not metadata.get("duration_seconds") and cld_res.get("duration"):
+                metadata["duration_seconds"] = float(cld_res.get("duration"))
+
     new_video = Video(
         id=video_id,
         uploaded_by=current_user.id,
         title=extracted_title if extracted_title else f"Online Video ({str(video_id)[:8]})",
         original_filename=os.path.basename(downloaded_file),
-        storage_path=downloaded_file,
+        storage_path=storage_path,
         duration_seconds=metadata["duration_seconds"],
         format=metadata["format"] or os.path.splitext(downloaded_file)[1].replace(".", "").upper(),
         file_size_bytes=file_size,
@@ -248,6 +270,10 @@ def get_video_file(
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video record not found")
+
+    # If video is stored in Cloudinary or remote CDN, redirect directly to the stream
+    if video.storage_path and (video.storage_path.startswith("http://") or video.storage_path.startswith("https://")):
+        return RedirectResponse(video.storage_path, status_code=307)
 
     # Locate actual file on disk (handling cross-platform Windows/Linux path separators)
     file_path = video.storage_path
