@@ -125,6 +125,11 @@ export default function DashboardPage() {
   // Bookmarking
   const [isBookmarked, setIsBookmarked] = useState(false);
 
+  // Analytics Dashboard Interactive State
+  const [analyticsReportSearch, setAnalyticsReportSearch] = useState("");
+  const [selectedTimelineVideoId, setSelectedTimelineVideoId] = useState(null);
+  const [selectedTopicFilter, setSelectedTopicFilter] = useState(null);
+
   // Resizable Workstation Columns State (Default: Left 25%, Center 50% [wider video playback], Right 25%)
   const [colWidths, setColWidths] = useState({ left: 25, center: 50, right: 25 });
   const [videoError, setVideoError] = useState(false);
@@ -449,9 +454,24 @@ export default function DashboardPage() {
 
   const formatDuration = (seconds) => {
     if (!seconds) return "0m 0s";
-    const mins = Math.floor(seconds / 60);
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
+    if (hrs > 0) {
+      return `${hrs}h ${mins}m ${secs}s`;
+    }
     return `${mins}m ${secs}s`;
+  };
+
+  const handleOpenVideoFromAnalytics = (videoId) => {
+    const found = videos.find((v) => v.id === videoId);
+    if (found) {
+      handleSelectVideo(found);
+    } else {
+      videosApi.getVideo(videoId).then((v) => {
+        handleSelectVideo(v);
+      }).catch((err) => console.error("Failed to load video from analytics:", err));
+    }
   };
 
   const filteredVideos = videos.filter((vid) => {
@@ -1199,86 +1219,647 @@ export default function DashboardPage() {
         {/* TAB 3: ANALYTICS DASHBOARD */}
         {activeTab === "analytics" && user?.role !== "learner" && (
           <div className="space-y-8">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
+            
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
               <div>
-                <h2 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">Content Intelligence & Metrics</h2>
-                <p className="text-xs text-slate-400 mt-1">Platform statistics on videos analyzed, processing speed, and user activity.</p>
-              </div>
-
-              <button
-                onClick={fetchAnalytics}
-                className="glass-button-secondary px-4 py-2 rounded-xl text-xs font-semibold"
-              >
-                Refresh Data
-              </button>
-            </div>
-
-            {/* Metrics Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="glass-card glass-card-hover p-6 rounded-2xl relative overflow-hidden">
-                <div className="h-1 bg-gradient-to-r from-indigo-500 to-indigo-400 absolute top-0 left-0 right-0 shadow-[0_0_10px_rgba(99,102,241,0.8)]"></div>
-                <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider block">Total Videos</span>
-                <span className="text-3xl font-black text-white mt-2 block font-mono">{analytics?.total_videos || 0}</span>
-              </div>
-              <div className="glass-card glass-card-hover p-6 rounded-2xl relative overflow-hidden">
-                <div className="h-1 bg-gradient-to-r from-emerald-500 to-emerald-400 absolute top-0 left-0 right-0 shadow-[0_0_10px_rgba(16,185,129,0.8)]"></div>
-                <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider block">Completed AI Analyses</span>
-                <span className="text-3xl font-black text-emerald-400 mt-2 block font-mono">{analytics?.completed_videos || 0}</span>
-              </div>
-              <div className="glass-card glass-card-hover p-6 rounded-2xl relative overflow-hidden">
-                <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400 absolute top-0 left-0 right-0 shadow-[0_0_10px_rgba(245,158,11,0.8)]"></div>
-                <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider block">Processing Queue</span>
-                <span className="text-3xl font-black text-amber-400 mt-2 block font-mono">{analytics?.processing_videos || 0}</span>
-              </div>
-              <div className="glass-card glass-card-hover p-6 rounded-2xl relative overflow-hidden">
-                <div className="h-1 bg-gradient-to-r from-violet-500 to-purple-400 absolute top-0 left-0 right-0 shadow-[0_0_10px_rgba(139,92,246,0.8)]"></div>
-                <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider block">Total Hours Analyzed</span>
-                <span className="text-3xl font-black text-violet-400 mt-2 block font-mono">{((analytics?.total_duration_minutes || 0) / 60.0).toFixed(1)} hrs</span>
-              </div>
-            </div>
-
-            {/* Activity History Table */}
-            <div className="glass-card p-7 rounded-2xl space-y-5">
-              <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">Recent Activity Logs</h3>
-              {analytics?.recent_activities?.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-slate-200">
-                    <thead className="glass-panel text-slate-400 uppercase text-[10px] font-semibold">
-                      <tr>
-                        <th className="py-3 px-4 rounded-l-lg">Action</th>
-                        <th className="py-3 px-4">Details</th>
-                        <th className="py-3 px-4 rounded-r-lg">Timestamp</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/[0.06]">
-                      {analytics.recent_activities.map((act) => (
-                        <tr key={act.id} className="hover:bg-white/[0.04] transition">
-                          <td className="py-3.5 px-4 font-bold text-indigo-300">{act.action}</td>
-                          <td className="py-3.5 px-4 font-mono text-[11px] text-slate-400">{JSON.stringify(act.extra_data)}</td>
-                          <td className="py-3.5 px-4 text-[11px] text-slate-400">{new Date(act.created_at).toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                  <h2 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
+                    Content Intelligence & Media Analytics
+                  </h2>
                 </div>
-              ) : (
-                <p className="text-xs text-slate-500 italic py-6 text-center">No activity recorded.</p>
-              )}
+                <p className="text-xs text-slate-400 mt-1">
+                  Cross-video aggregation answering what content has been processed, how it is consumed, and what AI insights were extracted.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={fetchAnalytics}
+                  className="glass-button-primary px-4 py-2 text-white rounded-xl text-xs font-bold shrink-0 flex items-center gap-2"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh Analytics
+                </button>
+              </div>
             </div>
 
-            {/* Administrator Management Panel */}
+            {/* TOP SECTION: OVERVIEW METRICS CARDS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {/* Card 1: Total Videos */}
+              <div className="glass-card glass-card-hover p-5 rounded-2xl relative overflow-hidden group">
+                <div className="h-1 bg-gradient-to-r from-indigo-500 via-indigo-400 to-cyan-400 absolute top-0 left-0 right-0 shadow-[0_0_10px_rgba(99,102,241,0.8)]"></div>
+                <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Total Videos</span>
+                <span className="text-3xl font-black text-white mt-1.5 block font-mono group-hover:text-indigo-300 transition">
+                  {analytics?.total_videos || 0}
+                </span>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  {analytics?.completed_videos || 0} completed • {analytics?.processing_videos || 0} queue
+                </span>
+              </div>
+
+              {/* Card 2: Total Hours Analyzed */}
+              <div className="glass-card glass-card-hover p-5 rounded-2xl relative overflow-hidden group">
+                <div className="h-1 bg-gradient-to-r from-purple-500 via-violet-400 to-indigo-500 absolute top-0 left-0 right-0 shadow-[0_0_10px_rgba(168,85,247,0.8)]"></div>
+                <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Total Hours Processed</span>
+                <span className="text-3xl font-black text-purple-300 mt-1.5 block font-mono group-hover:text-purple-200 transition">
+                  {((analytics?.total_duration_minutes || 0) / 60.0).toFixed(1)}<span className="text-lg font-bold text-slate-400">h</span>
+                </span>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  {analytics?.total_duration_minutes || 0} total minutes
+                </span>
+              </div>
+
+              {/* Card 3: Transcripts Generated */}
+              <div className="glass-card glass-card-hover p-5 rounded-2xl relative overflow-hidden group">
+                <div className="h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 absolute top-0 left-0 right-0 shadow-[0_0_10px_rgba(16,185,129,0.8)]"></div>
+                <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Transcripts Generated</span>
+                <span className="text-3xl font-black text-emerald-400 mt-1.5 block font-mono group-hover:text-emerald-300 transition">
+                  {analytics?.total_transcripts ?? analytics?.completed_videos ?? 0}
+                </span>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Whisper STT speech-to-text
+                </span>
+              </div>
+
+              {/* Card 4: Summaries Generated */}
+              <div className="glass-card glass-card-hover p-5 rounded-2xl relative overflow-hidden group">
+                <div className="h-1 bg-gradient-to-r from-amber-500 via-orange-400 to-rose-400 absolute top-0 left-0 right-0 shadow-[0_0_10px_rgba(245,158,11,0.8)]"></div>
+                <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Summaries Generated</span>
+                <span className="text-3xl font-black text-amber-400 mt-1.5 block font-mono group-hover:text-amber-300 transition">
+                  {analytics?.total_summaries ?? analytics?.completed_videos ?? 0}
+                </span>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Short & Executive Reports
+                </span>
+              </div>
+
+              {/* Card 5: Key Moments Detected */}
+              <div className="glass-card glass-card-hover p-5 rounded-2xl relative overflow-hidden group">
+                <div className="h-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 absolute top-0 left-0 right-0 shadow-[0_0_10px_rgba(6,182,212,0.8)]"></div>
+                <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block">Key Moments Detected</span>
+                <span className="text-3xl font-black text-cyan-400 mt-1.5 block font-mono group-hover:text-cyan-300 transition">
+                  {analytics?.total_key_moments ?? 0}
+                </span>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Timestamped chapters
+                </span>
+              </div>
+            </div>
+
+            {/* TIER 1: VIDEO ANALYTICS & PROCESSING VELOCITY */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+              
+              {/* Left 7 cols: Weekly Velocity Bar Chart */}
+              <div className="lg:col-span-7 glass-card p-6 rounded-2xl flex flex-col justify-between space-y-5">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <div>
+                    <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-wider">
+                      Videos Processed Over Time
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Daily media volume throughput over the last 7 days</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-gradient-to-t from-indigo-500 to-cyan-400 inline-block"></span>
+                    <span>Completed</span>
+                  </div>
+                </div>
+
+                {/* SVG/CSS Clean Responsive Bar Chart */}
+                <div className="pt-4 pb-2">
+                  {analytics?.weekly_timeline && analytics.weekly_timeline.length > 0 ? (
+                    <div className="flex items-end justify-between gap-2 sm:gap-4 h-48 px-2 border-b border-white/10 pb-2">
+                      {(() => {
+                        const maxVal = Math.max(...analytics.weekly_timeline.map((d) => d.count), 1);
+                        return analytics.weekly_timeline.map((day, idx) => {
+                          const heightPct = day.count > 0 ? Math.max((day.count / maxVal) * 100, 16) : 6;
+                          return (
+                            <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
+                              <span className="text-[10px] font-mono font-bold text-cyan-300 opacity-0 group-hover:opacity-100 transition duration-150">
+                                {day.count}
+                              </span>
+                              <div className="w-full max-w-[42px] bg-white/[0.04] rounded-t-lg flex items-end h-full p-1 group-hover:bg-white/[0.08] transition">
+                                <div
+                                  style={{ height: `${heightPct}%` }}
+                                  className={`w-full rounded-t-md transition-all duration-500 shadow-md ${
+                                    day.count > 0
+                                      ? "bg-gradient-to-t from-indigo-600 via-purple-500 to-cyan-400 shadow-[0_0_12px_rgba(99,102,241,0.5)]"
+                                      : "bg-white/10"
+                                  }`}
+                                ></div>
+                              </div>
+                              <div className="text-center pt-1">
+                                <span className="block text-[11px] font-bold text-slate-300 font-mono">{day.day}</span>
+                                <span className="block text-[9px] text-slate-500 font-mono">{day.date.slice(5)}</span>
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="h-44 flex items-center justify-center text-xs text-slate-500 font-mono">
+                      No processing timeline history available.
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-white/[0.06] text-xs text-slate-400 font-mono">
+                  <span>Weekly Volume: <strong className="text-white">{analytics?.weekly_timeline?.reduce((acc, d) => acc + d.count, 0) || 0} videos</strong></span>
+                  <span>Pipeline Success: <strong className="text-emerald-400">{analytics?.success_rate || 100}%</strong></span>
+                </div>
+              </div>
+
+              {/* Right 5 cols: Key Performance Stats & Efficiency */}
+              <div className="lg:col-span-5 glass-card p-6 rounded-2xl flex flex-col justify-between space-y-4">
+                <div className="border-b border-white/[0.08] pb-3">
+                  <h3 className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">
+                    Pipeline Health & Performance
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Reliability, speed, and cloud resource metrics</p>
+                </div>
+
+                <div className="space-y-3 flex-1 justify-center flex flex-col">
+                  <div className="flex items-center justify-between p-3 glass-panel rounded-xl">
+                    <span className="text-xs text-slate-300">Processing Success Rate</span>
+                    <span className="text-sm font-bold font-mono text-emerald-400">
+                      {analytics?.success_rate || 100}%
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 glass-panel rounded-xl">
+                    <span className="text-xs text-slate-300">Successfully Processed</span>
+                    <span className="text-sm font-bold font-mono text-white">
+                      {analytics?.completed_videos || 0} <span className="text-xs text-slate-400 font-normal">videos</span>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 glass-panel rounded-xl">
+                    <span className="text-xs text-slate-300">Active / Queued Jobs</span>
+                    <span className="text-sm font-bold font-mono text-amber-400">
+                      {analytics?.processing_videos || 0}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 glass-panel rounded-xl">
+                    <span className="text-xs text-slate-300">Average Video Duration</span>
+                    <span className="text-sm font-bold font-mono text-cyan-300">
+                      {formatDuration(analytics?.avg_video_duration_seconds)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 glass-panel rounded-xl">
+                    <span className="text-xs text-slate-300">Total Cloud Storage</span>
+                    <span className="text-sm font-bold font-mono text-purple-300">
+                      {analytics?.total_storage_mb || 0} MB
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-white/[0.06] text-[11px] text-slate-400 font-mono flex items-center justify-between">
+                  <span>CDN Delivery: <strong className="text-cyan-400">Cloudinary H.264</strong></span>
+                  <span>Whisper STT: <strong className="text-emerald-400">Operational</strong></span>
+                </div>
+              </div>
+            </div>
+
+            {/* TIER 2: AI CONTENT INSIGHTS ⭐ (Top Topics & Extraction Health) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+              
+              {/* Left 6 cols: Top Topics & Keywords Cloud */}
+              <div className="lg:col-span-6 glass-card p-6 rounded-2xl flex flex-col justify-between space-y-4">
+                <div>
+                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-amber-400 text-xs">⭐</span>
+                        <h3 className="text-xs font-mono font-bold text-purple-300 uppercase tracking-wider">
+                          AI Content Insights: Top Topics
+                        </h3>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Concepts and subject themes automatically extracted by Groq LLM</p>
+                    </div>
+
+                    {selectedTopicFilter && (
+                      <button
+                        onClick={() => setSelectedTopicFilter(null)}
+                        className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 px-2 py-1 rounded-lg border border-cyan-500/30"
+                      >
+                        Clear Filter ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="pt-4 flex flex-wrap gap-2">
+                    {analytics?.top_keywords && analytics.top_keywords.length > 0 ? (
+                      analytics.top_keywords.map((kw, i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            if (selectedTopicFilter === kw.keyword) {
+                              setSelectedTopicFilter(null);
+                            } else {
+                              setSelectedTopicFilter(kw.keyword);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-mono transition flex items-center gap-1.5 ${
+                            selectedTopicFilter === kw.keyword
+                              ? "bg-indigo-600 text-white font-bold border border-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.6)]"
+                              : "glass-panel hover:bg-indigo-500/20 text-slate-300 hover:text-white border border-white/10"
+                          }`}
+                        >
+                          <span className="text-indigo-400 font-bold">#</span>
+                          <span>{kw.keyword}</span>
+                          <span className="ml-1 px-1.5 py-0.2 bg-white/10 rounded-full text-[10px] text-cyan-300 font-bold">
+                            {kw.count}
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="text-xs text-slate-500 italic py-6">
+                        No topic keywords extracted yet. Process videos with AI to build your knowledge map.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400 italic pt-2 border-t border-white/[0.06]">
+                  Tip: Click any topic tag to filter the Video Summary Reports catalog below.
+                </p>
+              </div>
+
+              {/* Right 6 cols: AI Extraction Coverage */}
+              <div className="lg:col-span-6 glass-card p-6 rounded-2xl flex flex-col justify-between space-y-4">
+                <div className="border-b border-white/[0.08] pb-3">
+                  <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-wider">
+                    AI Extraction Coverage & Density
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">How much raw video content has been structured into actionable intelligence</p>
+                </div>
+
+                <div className="space-y-4 flex-1 justify-center flex flex-col">
+                  {/* Metric 1: Transcripts */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs font-mono">
+                      <span className="text-slate-300">Transcription Coverage</span>
+                      <span className="text-emerald-400 font-bold">
+                        {Math.round(((analytics?.total_transcripts || 0) / Math.max(analytics?.total_videos || 1, 1)) * 100)}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-900/80 rounded-full h-2 overflow-hidden border border-white/10">
+                      <div
+                        className="bg-gradient-to-r from-emerald-500 to-teal-400 h-2 rounded-full"
+                        style={{ width: `${Math.min(100, Math.round(((analytics?.total_transcripts || 0) / Math.max(analytics?.total_videos || 1, 1)) * 100))}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Metric 2: Summaries */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs font-mono">
+                      <span className="text-slate-300">Executive Summarization Rate</span>
+                      <span className="text-purple-300 font-bold">
+                        {Math.round(((analytics?.total_summaries || 0) / Math.max(analytics?.total_videos || 1, 1)) * 100)}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-900/80 rounded-full h-2 overflow-hidden border border-white/10">
+                      <div
+                        className="bg-gradient-to-r from-purple-500 to-indigo-400 h-2 rounded-full"
+                        style={{ width: `${Math.min(100, Math.round(((analytics?.total_summaries || 0) / Math.max(analytics?.total_videos || 1, 1)) * 100))}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Metric 3: Chaptering */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs font-mono">
+                      <span className="text-slate-300">Average Key Moments Density</span>
+                      <span className="text-cyan-300 font-bold">
+                        {((analytics?.total_key_moments || 0) / Math.max(analytics?.completed_videos || 1, 1)).toFixed(1)} moments / video
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-900/80 rounded-full h-2 overflow-hidden border border-white/10">
+                      <div
+                        className="bg-gradient-to-r from-cyan-500 to-blue-400 h-2 rounded-full"
+                        style={{ width: `${Math.min(100, Math.round((((analytics?.total_key_moments || 0) / Math.max(analytics?.completed_videos || 1, 1)) / 10) * 100))}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-white/[0.06] text-[11px] text-slate-400 font-mono">
+                  All extracted outputs are fully editable, exportable as JSON/TXT, and indexed.
+                </div>
+              </div>
+            </div>
+
+            {/* TIER 3: SUMMARY REPORTS (PROCESSED VIDEO CATALOG & DRILLDOWN) */}
+            <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-5">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
+                <div>
+                  <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
+                    Summary Reports & Video Intelligence Catalog
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Multi-dimensional status breakdown per video. Click "Open in Studio" to inspect transcripts, playback, and full summaries.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-1 sm:w-64">
+                    <input
+                      type="text"
+                      placeholder="Search reports by title..."
+                      value={analyticsReportSearch}
+                      onChange={(e) => setAnalyticsReportSearch(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 glass-input rounded-xl text-xs"
+                    />
+                    <svg className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              {selectedTopicFilter && (
+                <div className="p-2.5 bg-indigo-500/15 border border-indigo-500/30 rounded-xl flex items-center justify-between text-xs text-indigo-200">
+                  <span>Filtered by topic: <strong className="text-white">#{selectedTopicFilter}</strong></span>
+                  <button onClick={() => setSelectedTopicFilter(null)} className="text-xs font-bold text-cyan-400 hover:underline">
+                    Clear Filter
+                  </button>
+                </div>
+              )}
+
+              {(() => {
+                const reports = (analytics?.video_reports || []).filter((r) => {
+                  if (analyticsReportSearch.trim()) {
+                    const q = analyticsReportSearch.toLowerCase().trim();
+                    if (!r.title?.toLowerCase().includes(q)) return false;
+                  }
+                  if (selectedTopicFilter) {
+                    if (!r.keywords || !r.keywords.some((k) => k.toLowerCase() === selectedTopicFilter.toLowerCase())) {
+                      return false;
+                    }
+                  }
+                  return true;
+                });
+
+                if (reports.length === 0) {
+                  return (
+                    <div className="py-12 text-center text-slate-400 text-xs font-mono border border-dashed border-white/10 rounded-xl">
+                      No video reports match the selected filters.
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs text-slate-200">
+                      <thead className="glass-panel text-slate-400 uppercase text-[10px] font-semibold">
+                        <tr>
+                          <th className="py-3 px-4 rounded-l-lg">Video Title</th>
+                          <th className="py-3 px-4">Duration</th>
+                          <th className="py-3 px-4">Transcript</th>
+                          <th className="py-3 px-4">AI Summary</th>
+                          <th className="py-3 px-4">Key Moments</th>
+                          <th className="py-3 px-4">Topics Detected</th>
+                          <th className="py-3 px-4 text-right rounded-r-lg">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.06]">
+                        {reports.map((rep) => (
+                          <tr key={rep.id} className="hover:bg-white/[0.04] transition group">
+                            <td className="py-3.5 px-4 font-bold text-white max-w-xs">
+                              <span className="line-clamp-1 group-hover:text-indigo-300 transition">{rep.title}</span>
+                              <span className="block text-[10px] text-slate-500 font-mono font-normal">
+                                {rep.created_at ? new Date(rep.created_at).toLocaleDateString() : ""}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 font-mono text-[11px] text-cyan-300">
+                              {formatDuration(rep.duration_seconds)}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              {rep.has_transcript ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 font-bold">
+                                  ✓ Generated
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-mono text-slate-500">Pending</span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              {rep.has_summary ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-mono text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-md border border-purple-500/20 font-bold">
+                                  ✓ Generated
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-mono text-slate-500">Pending</span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 font-mono text-[11px]">
+                              {rep.key_moments_count > 0 ? (
+                                <button
+                                  onClick={() => setSelectedTimelineVideoId(rep.id)}
+                                  className="text-cyan-400 hover:text-cyan-300 underline font-bold"
+                                  title="Inspect key moments timeline"
+                                >
+                                  {rep.key_moments_count} moments ↗
+                                </button>
+                              ) : (
+                                <span className="text-slate-500">0 moments</span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <div className="flex flex-wrap gap-1 max-w-[180px]">
+                                {rep.keywords && rep.keywords.length > 0 ? (
+                                  rep.keywords.map((kw, ki) => (
+                                    <span key={ki} className="text-[9px] font-mono px-1.5 py-0.5 glass-badge rounded text-indigo-300 font-bold">
+                                      #{kw}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-[10px] text-slate-500 italic">None</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <button
+                                onClick={() => handleOpenVideoFromAnalytics(rep.id)}
+                                className="px-3 py-1.5 glass-button-primary text-white text-xs rounded-xl font-bold uppercase tracking-wider whitespace-nowrap inline-flex items-center gap-1"
+                              >
+                                <span>Open Studio</span>
+                                <span className="text-[10px]">↗</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* TIER 4: KEY MOMENTS TIMELINE VISUALIZER */}
+            {(() => {
+              const currentVideo =
+                (analytics?.video_reports || []).find((v) => v.id === selectedTimelineVideoId) ||
+                (analytics?.video_reports || []).find((v) => v.key_moments_count > 0) ||
+                (analytics?.video_reports || [])[0];
+
+              const fullVideo = videos.find((v) => v.id === currentVideo?.id) || currentVideo;
+              const moments = fullVideo?.key_moments || currentVideo?.key_moments_preview || [];
+              const durationSec = fullVideo?.duration_seconds || 1;
+
+              if (!currentVideo) return null;
+
+              return (
+                <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono px-2 py-0.5 bg-cyan-500/20 text-cyan-300 rounded border border-cyan-500/30 font-bold">
+                          TIMELINE INSPECTOR
+                        </span>
+                        <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                          {currentVideo.title}
+                        </h3>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Detected timestamp highlights and chapters plotted across video duration ({formatDuration(currentVideo.duration_seconds)}).
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={currentVideo.id}
+                        onChange={(e) => setSelectedTimelineVideoId(e.target.value)}
+                        className="glass-input px-3 py-1.5 rounded-xl text-xs font-mono bg-[#070B14] text-white border border-white/10"
+                      >
+                        {(analytics?.video_reports || []).map((v) => (
+                          <option key={v.id} value={v.id} className="bg-slate-900 text-white">
+                            {v.title} ({v.key_moments_count} moments)
+                          </option>
+                        ))}
+                      </select>
+
+                      <button
+                        onClick={() => handleOpenVideoFromAnalytics(currentVideo.id)}
+                        className="px-3.5 py-1.5 glass-button-primary text-white text-xs font-bold rounded-xl whitespace-nowrap"
+                      >
+                        Play in Workstation ↗
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Horizontal Timeline Bar */}
+                  <div className="space-y-4 pt-2">
+                    <div className="relative pt-6 pb-2 px-4">
+                      {/* Base Track */}
+                      <div className="h-2 w-full bg-slate-800/90 rounded-full relative overflow-visible border border-white/10">
+                        {/* Glow Gradient Accent */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-400 opacity-60 rounded-full"></div>
+
+                        {/* Milestone Pins */}
+                        {moments.map((km, idx) => {
+                          const s = km.start_seconds || 0;
+                          const pct = Math.min(Math.max((s / durationSec) * 100, 3), 97);
+                          return (
+                            <div
+                              key={idx}
+                              style={{ left: `${pct}%` }}
+                              className="absolute -top-3.5 -translate-x-1/2 flex flex-col items-center group cursor-pointer z-10"
+                              title={`${km.timestamp} - ${km.title}`}
+                            >
+                              <span className="w-3.5 h-3.5 rounded-full bg-cyan-400 border-2 border-[#070B14] shadow-[0_0_10px_rgba(6,182,212,0.8)] group-hover:scale-125 transition-transform"></span>
+                              <span className="mt-4 text-[9px] font-mono font-bold text-cyan-300 opacity-80 group-hover:opacity-100 whitespace-nowrap">
+                                {km.timestamp}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Start / End Labels */}
+                      <div className="flex justify-between text-[10px] font-mono text-slate-500 pt-3">
+                        <span>0:00 (Start)</span>
+                        <span>{formatDuration(currentVideo.duration_seconds)} (End)</span>
+                      </div>
+                    </div>
+
+                    {/* Moments Cards Grid */}
+                    {moments.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+                        {moments.map((km, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => handleOpenVideoFromAnalytics(currentVideo.id)}
+                            className="p-3.5 glass-panel hover:bg-indigo-500/15 hover:border-indigo-400/40 rounded-xl transition cursor-pointer group space-y-1.5"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="px-2 py-0.5 text-[10px] font-mono font-bold text-cyan-300 glass-badge rounded">
+                                {km.timestamp}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">Chapter #{idx + 1}</span>
+                            </div>
+                            <h4 className="font-bold text-xs text-white group-hover:text-indigo-300 transition line-clamp-1">
+                              {km.title}
+                            </h4>
+                            {km.description && (
+                              <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                                {km.description}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500 italic text-center py-4">
+                        No key moments have been generated for this video yet. Run AI processing in the Studio to auto-chapter.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* TIER 5: ADMINISTRATOR USER MANAGEMENT & SYSTEM HEALTH */}
             {user?.role === "administrator" && (
-              <div className="glass-card p-7 rounded-2xl space-y-5">
-                <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">Administrator User Management</h3>
+              <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-5">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
+                  <div>
+                    <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
+                      Administrator User & Resource Management
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      System-wide platform utilization, user access permissions, and storage quotas.
+                    </p>
+                  </div>
+
+                  {analytics?.admin_metrics && (
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 glass-badge font-mono text-[11px] font-bold rounded-lg text-indigo-300">
+                        {analytics.admin_metrics.total_users} Users Registered
+                      </span>
+                      <span className="px-3 py-1 glass-badge font-mono text-[11px] font-bold rounded-lg text-purple-300">
+                        {analytics.admin_metrics.total_storage_mb} MB Allocated
+                      </span>
+                    </div>
+                  )}
+                </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs text-slate-200">
                     <thead className="glass-panel text-slate-400 uppercase text-[10px] font-semibold">
                       <tr>
-                        <th className="py-3 px-4 rounded-l-lg">Name</th>
-                        <th className="py-3 px-4">Email</th>
-                        <th className="py-3 px-4">Role</th>
+                        <th className="py-3 px-4 rounded-l-lg">User Name</th>
+                        <th className="py-3 px-4">Email Address</th>
+                        <th className="py-3 px-4">System Role</th>
                         <th className="py-3 px-4">Videos Uploaded</th>
-                        <th className="py-3 px-4 rounded-r-lg">Joined At</th>
+                        <th className="py-3 px-4 rounded-r-lg">Registration Date</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/[0.06]">
@@ -1287,10 +1868,10 @@ export default function DashboardPage() {
                           <td className="py-3.5 px-4 font-bold text-white">{u.name}</td>
                           <td className="py-3.5 px-4 text-slate-400">{u.email}</td>
                           <td className="py-3.5 px-4 font-mono text-[11px] text-indigo-300 font-bold">
-                            <span className="glass-badge px-2 py-0.5 rounded uppercase">{u.role}</span>
+                            <span className="glass-badge px-2 py-0.5 rounded uppercase">{u.role?.replace("_", " ")}</span>
                           </td>
-                          <td className="py-3.5 px-4 font-bold text-emerald-400">{u.videos_count}</td>
-                          <td className="py-3.5 px-4 text-slate-400">{new Date(u.created_at).toLocaleString()}</td>
+                          <td className="py-3.5 px-4 font-bold text-emerald-400 font-mono">{u.videos_count}</td>
+                          <td className="py-3.5 px-4 text-slate-400 text-[11px]">{new Date(u.created_at).toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1298,6 +1879,52 @@ export default function DashboardPage() {
                 </div>
               </div>
             )}
+
+            {/* TIER 6: SYSTEM AUDIT & ACTIVITY HISTORY */}
+            <div className="glass-card p-6 sm:p-7 rounded-2xl space-y-5">
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-widest">
+                  Recent Activity Audit Logs
+                </h3>
+                <span className="text-[10px] font-mono text-slate-400">Timestamped operational events</span>
+              </div>
+
+              {analytics?.recent_activities?.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-200">
+                    <thead className="glass-panel text-slate-400 uppercase text-[10px] font-semibold">
+                      <tr>
+                        <th className="py-3 px-4 rounded-l-lg">Action</th>
+                        <th className="py-3 px-4">Event Details</th>
+                        <th className="py-3 px-4 rounded-r-lg">Timestamp</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/[0.06]">
+                      {analytics.recent_activities.map((act) => (
+                        <tr key={act.id} className="hover:bg-white/[0.04] transition">
+                          <td className="py-3.5 px-4 font-bold text-indigo-300 font-mono text-[11px]">
+                            {act.action}
+                          </td>
+                          <td className="py-3.5 px-4 font-mono text-[11px] text-slate-300">
+                            {act.extra_data?.title ? (
+                              <span>Video: <strong className="text-white">{act.extra_data.title}</strong></span>
+                            ) : (
+                              JSON.stringify(act.extra_data)
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-[11px] text-slate-400 font-mono">
+                            {new Date(act.created_at).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 italic py-6 text-center">No recent activity recorded.</p>
+              )}
+            </div>
+
           </div>
         )}
 
