@@ -768,35 +768,51 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="space-y-2.5 text-xs">
-              <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                <span className="text-slate-400">Account Role</span>
-                <span className="font-mono font-bold text-white uppercase">{user?.role?.replace("_", " ")}</span>
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between items-center py-2 border-b border-white/[0.06]">
+                <span className="text-slate-400">Account Status</span>
+                <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span>Active</span>
+                </span>
               </div>
-              <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                <span className="text-slate-400">User ID</span>
-                <span className="font-mono text-slate-300 text-[11px] truncate max-w-[210px]">{user?.id}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                <span className="text-slate-400">Authentication</span>
-                <span className="text-emerald-400 font-mono font-semibold">JWT Session Active</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                <span className="text-slate-400">Saved Bookmarks</span>
-                <span className="font-mono text-indigo-300 font-bold">{bookmarks.length} saved</span>
-              </div>
-              <div className="flex justify-between py-2">
-                <span className="text-slate-400">Lectures Studied</span>
-                <span className="font-mono text-cyan-300 font-bold">{studyHistory.length} recorded</span>
-              </div>
+
+              {(user?.role === "content_creator" || user?.role === "educator") && (
+                <div className="flex justify-between items-center py-2 border-b border-white/[0.06]">
+                  <span className="text-slate-400">Videos Uploaded</span>
+                  <span className="font-mono text-white font-bold">
+                    {videos.filter((v) => v.uploaded_by === user?.id).length} videos
+                  </span>
+                </div>
+              )}
+
+              {user?.role === "learner" && (
+                <>
+                  <div className="flex justify-between items-center py-2 border-b border-white/[0.06]">
+                    <span className="text-slate-400">Saved Bookmarks</span>
+                    <span className="font-mono text-indigo-300 font-bold">{bookmarks.length} saved</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-white/[0.06]">
+                    <span className="text-slate-400">Lectures Studied</span>
+                    <span className="font-mono text-cyan-300 font-bold">{studyHistory.length} recorded</span>
+                  </div>
+                </>
+              )}
+
+              {user?.role === "administrator" && (
+                <div className="flex justify-between items-center py-2 border-b border-white/[0.06]">
+                  <span className="text-slate-400">Platform Permissions</span>
+                  <span className="text-purple-300 font-mono font-semibold">Full Access</span>
+                </div>
+              )}
             </div>
 
-            <div className="pt-3 flex justify-end">
+            <div className="pt-2 flex justify-end gap-2">
               <button
                 onClick={() => setShowProfileModal(false)}
                 className="px-5 py-2 glass-button-primary text-white rounded-xl text-xs font-bold"
               >
-                Close Profile
+                Close
               </button>
             </div>
           </div>
