@@ -150,38 +150,56 @@ def import_video_url(
         unique_id = str(uuid.uuid4())
         outtmpl = os.path.join(UPLOAD_DIR, f"{unique_id}.%(ext)s")
 
-        cookie_file = os.environ.get("YOUTUBE_COOKIES_PATH") or os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "cookies.txt"
-        )
+        possible_cookie_paths = [
+            os.environ.get("YOUTUBE_COOKIES_PATH"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "cookies.txt"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "backend", "cookies.txt"),
+        ]
+        cookie_file = next((p for p in possible_cookie_paths if p and os.path.exists(p)), None)
 
         ydl_opts = {
             'outtmpl': outtmpl,
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'format': 'bestvideo+bestaudio/best',
             'merge_output_format': 'mp4',
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'ios', 'mweb', 'web']
-                }
-            },
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
         }
 
-        if os.path.exists(cookie_file):
+        if cookie_file:
             ydl_opts['cookiefile'] = cookie_file
             logger.info(f"Using YouTube cookie file: {cookie_file}")
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            if not extracted_title:
-                extracted_title = info.get("title") or "Online Video"
-            
-            # Find the downloaded file matching unique_id
-            for fname in os.listdir(UPLOAD_DIR):
-                if fname.startswith(unique_id):
-                    downloaded_file = os.path.join(UPLOAD_DIR, fname)
-                    break
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if not extracted_title:
+                    extracted_title = info.get("title") or "Online Video"
+        except Exception as primary_err:
+            logger.warning(f"Primary yt-dlp stream extraction failed ({primary_err}), attempting fallback format...")
+            fallback_opts = {
+                'outtmpl': outtmpl,
+                'format': 'best',
+                'quiet': True,
+                'no_warnings': True,
+                'nocheckcertificate': True,
+            }
+            if cookie_file:
+                fallback_opts['cookiefile'] = cookie_file
+            with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if not extracted_title:
+                    extracted_title = info.get("title") or "Online Video"
+
+        # Find the downloaded file matching unique_id, prioritizing merged/complete video files
+        candidates = []
+        for fname in os.listdir(UPLOAD_DIR):
+            if fname.startswith(unique_id) and not fname.endswith(".part") and not fname.endswith(".ytdl"):
+                candidates.append(os.path.join(UPLOAD_DIR, fname))
+
+        if candidates:
+            mp4_candidates = [c for c in candidates if c.endswith(".mp4")]
+            downloaded_file = mp4_candidates[0] if mp4_candidates else candidates[0]
     except Exception as yt_err:
         raw_err = str(yt_err)
         logger.warning(f"yt-dlp import notice: {raw_err}")

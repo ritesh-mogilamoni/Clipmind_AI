@@ -840,7 +840,11 @@ export default function DashboardPage() {
                   <div className="flex items-center gap-1 bg-[#161B28] p-1 rounded-lg border border-white/[0.06]">
                     <button
                       type="button"
-                      onClick={() => setUploadMode("file")}
+                      onClick={() => {
+                        setUploadMode("file");
+                        setUploadError("");
+                        setUploadSuccess(false);
+                      }}
                       className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                         uploadMode === "file" ? "bg-indigo-600 text-white font-semibold shadow-sm" : "text-slate-400 hover:text-white"
                       }`}
@@ -849,7 +853,11 @@ export default function DashboardPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setUploadMode("url")}
+                      onClick={() => {
+                        setUploadMode("url");
+                        setUploadError("");
+                        setUploadSuccess(false);
+                      }}
                       className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                         uploadMode === "url" ? "bg-indigo-600 text-white font-semibold shadow-sm" : "text-slate-400 hover:text-white"
                       }`}
@@ -879,7 +887,11 @@ export default function DashboardPage() {
                         type="url"
                         required
                         value={videoUrl}
-                        onChange={(e) => setVideoUrl(e.target.value)}
+                        onChange={(e) => {
+                          setVideoUrl(e.target.value);
+                          if (uploadError) setUploadError("");
+                          if (uploadSuccess) setUploadSuccess(false);
+                        }}
                         placeholder="Paste online video URL (e.g. YouTube, Vimeo, or direct .mp4 link)..."
                         className="w-full px-3.5 py-2.5 surface-input rounded-lg text-xs font-mono"
                       />
