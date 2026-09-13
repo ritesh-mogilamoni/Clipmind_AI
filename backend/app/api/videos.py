@@ -149,18 +149,29 @@ def import_video_url(
         import yt_dlp
         unique_id = str(uuid.uuid4())
         outtmpl = os.path.join(UPLOAD_DIR, f"{unique_id}.%(ext)s")
+
+        cookie_file = os.environ.get("YOUTUBE_COOKIES_PATH") or os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "cookies.txt"
+        )
+
         ydl_opts = {
             'outtmpl': outtmpl,
-            'format': 'bestvideo+bestaudio/best',
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             'merge_output_format': 'mp4',
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['ios', 'android', 'tv', 'web']
+                    'player_client': ['android', 'ios', 'mweb', 'web']
                 }
             },
             'quiet': True,
             'no_warnings': True,
+            'nocheckcertificate': True,
         }
+
+        if os.path.exists(cookie_file):
+            ydl_opts['cookiefile'] = cookie_file
+            logger.info(f"Using YouTube cookie file: {cookie_file}")
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             if not extracted_title:
@@ -172,8 +183,25 @@ def import_video_url(
                     downloaded_file = os.path.join(UPLOAD_DIR, fname)
                     break
     except Exception as yt_err:
-        yt_err_msg = str(yt_err)
-        logger.warning(f"yt-dlp import notice: {yt_err}")
+        raw_err = str(yt_err)
+        logger.warning(f"yt-dlp import notice: {raw_err}")
+        if "This video is unavailable" in raw_err or "Video unavailable" in raw_err:
+            yt_err_msg = "This YouTube video is unavailable or has been removed/made private on YouTube. Please verify the URL."
+        elif "Private video" in raw_err:
+            yt_err_msg = "This YouTube video is set to Private by its creator and cannot be imported without authentication."
+        elif "Sign in to confirm" in raw_err:
+            yt_err_msg = (
+                "YouTube requested authentication for this link ('Sign in to confirm you are not a bot'). "
+                "The video may be private, age-restricted, or restricted by YouTube. "
+                "Please ensure the video plays in an incognito window, or upload the MP4 file directly via the 'File Upload' tab."
+            )
+        elif "Incomplete YouTube ID" in raw_err or "is not a valid URL" in raw_err:
+            yt_err_msg = "The provided URL is not a valid video link. Please verify the link and try again."
+        elif "Premieres in" in raw_err or "Live event" in raw_err:
+            yt_err_msg = "This YouTube video is an upcoming premiere or active live stream and cannot be processed until completed."
+        else:
+            first_line = raw_err.split("\n")[0].replace("ERROR: ", "").strip()
+            yt_err_msg = f"Could not process video link ({first_line}). Please check that the link is publicly accessible or upload the video file directly."
 
     # Fallback to direct HTTP media file download ONLY for direct media file URLs (.mp4, .mov, .webm, etc.)
     if not downloaded_file or not os.path.exists(downloaded_file):
@@ -200,7 +228,7 @@ def import_video_url(
         else:
             raise HTTPException(
                 status_code=400,
-                detail=f"Could not extract video stream from the link: {yt_err_msg or 'Please ensure the link is a valid public video URL.'}"
+                detail=yt_err_msg or "Could not extract video stream from the link. Please ensure the link is a valid public video URL or upload the file directly."
             )
 
     file_size = os.path.getsize(downloaded_file)
@@ -637,7 +665,7 @@ def update_transcript(
 @router.get("/{video_id}/export")
 def export_video_data(
     video_id: uuid.UUID,
-    format: str = Query("txt", regex="^(txt|json)$"),
+    format: str = Query("txt", pattern="^(txt|json)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
