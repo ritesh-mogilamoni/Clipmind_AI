@@ -150,12 +150,34 @@ def import_video_url(
         unique_id = str(uuid.uuid4())
         outtmpl = os.path.join(UPLOAD_DIR, f"{unique_id}.%(ext)s")
 
-        possible_cookie_paths = [
-            os.environ.get("YOUTUBE_COOKIES_PATH"),
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "cookies.txt"),
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "backend", "cookies.txt"),
-        ]
-        cookie_file = next((p for p in possible_cookie_paths if p and os.path.exists(p)), None)
+        # Cloud deployment cookie support via environment variables (e.g. Render, Railway, Heroku)
+        cookie_env_content = os.environ.get("YOUTUBE_COOKIES_CONTENT")
+        cookie_env_base64 = os.environ.get("YOUTUBE_COOKIES_BASE64")
+        if cookie_env_base64 and not cookie_env_content:
+            import base64
+            try:
+                cookie_env_content = base64.b64decode(cookie_env_base64).decode("utf-8")
+            except Exception as b64_err:
+                logger.warning(f"Failed to decode YOUTUBE_COOKIES_BASE64: {b64_err}")
+
+        if cookie_env_content:
+            cloud_cookie_path = os.path.join(UPLOAD_DIR, "yt_cookies_cloud.txt")
+            try:
+                with open(cloud_cookie_path, "w", encoding="utf-8") as f:
+                    f.write(cookie_env_content)
+                cookie_file = cloud_cookie_path
+                logger.info(f"Using YouTube cookie from cloud environment variable at: {cloud_cookie_path}")
+            except Exception as c_err:
+                logger.warning(f"Could not write cloud cookie file: {c_err}")
+        else:
+            possible_cookie_paths = [
+                os.environ.get("YOUTUBE_COOKIES_PATH"),
+                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "cookies.txt"),
+                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "backend", "cookies.txt"),
+            ]
+            cookie_file = next((p for p in possible_cookie_paths if p and os.path.exists(p)), None)
+
+        proxy_url = os.environ.get("YOUTUBE_PROXY") or os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
 
         ydl_opts = {
             'outtmpl': outtmpl,
@@ -165,6 +187,10 @@ def import_video_url(
             'no_warnings': True,
             'nocheckcertificate': True,
         }
+
+        if proxy_url:
+            ydl_opts['proxy'] = proxy_url
+            logger.info(f"Using proxy for yt-dlp stream extraction: {proxy_url}")
 
         if cookie_file:
             ydl_opts['cookiefile'] = cookie_file
@@ -184,6 +210,8 @@ def import_video_url(
                 'no_warnings': True,
                 'nocheckcertificate': True,
             }
+            if proxy_url:
+                fallback_opts['proxy'] = proxy_url
             if cookie_file:
                 fallback_opts['cookiefile'] = cookie_file
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
