@@ -113,6 +113,19 @@ class Video(Base):
     uploader = relationship("User", back_populates="videos")
     bookmarks = relationship("Bookmark", back_populates="video")
 
+    @property
+    def youtube_id(self) -> Optional[str]:
+        target = self.storage_path or ""
+        if self.format == "YOUTUBE" or "youtube.com" in target or "youtu.be" in target:
+            import re
+            m = re.search(r"(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/)([a-zA-Z0-9_-]{11})", target)
+            if m:
+                return m.group(1)
+            fname = self.original_filename or ""
+            if fname.startswith("youtube_"):
+                return fname.replace("youtube_", "").replace(".mp4", "")
+        return None
+
 
 class Bookmark(Base):
     __tablename__ = "bookmarks"

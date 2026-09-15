@@ -28,6 +28,8 @@ class VideoResponse(BaseModel):
     file_size_bytes: Optional[int]
     status: VideoStatus
     visibility: Optional[str] = "public"
+    storage_path: Optional[str] = None
+    youtube_id: Optional[str] = None
     transcript_text: Optional[str] = None
     transcript_segments: Optional[List[Any]] = None
     short_summary: Optional[str] = None

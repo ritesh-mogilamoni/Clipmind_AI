@@ -147,4 +147,24 @@ export const analyticsApi = {
   },
 };
 
+export const getYoutubeId = (videoOrUrl) => {
+  if (!videoOrUrl) return null;
+  if (typeof videoOrUrl === "object") {
+    if (videoOrUrl.youtube_id) return videoOrUrl.youtube_id;
+    if (videoOrUrl.format === "YOUTUBE" && videoOrUrl.storage_path) {
+      return getYoutubeId(videoOrUrl.storage_path);
+    }
+    if (videoOrUrl.original_filename?.startsWith("youtube_")) {
+      return videoOrUrl.original_filename.replace("youtube_", "").replace(".mp4", "");
+    }
+    if (videoOrUrl.storage_path) {
+      return getYoutubeId(videoOrUrl.storage_path);
+    }
+    return null;
+  }
+  const str = String(videoOrUrl);
+  const match = str.match(/(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/|^)([a-zA-Z0-9_-]{11})(?:[&?\/]|$)/);
+  return match ? match[1] : null;
+};
+
 export default api;

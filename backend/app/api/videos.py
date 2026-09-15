@@ -117,6 +117,27 @@ def upload_video(
         raise HTTPException(status_code=500, detail=f"Database upload error: {str(e)}")
 
 
+def extract_youtube_id(url: str) -> Optional[str]:
+    """
+    Extracts 11-character YouTube video ID from various YouTube URL formats:
+    - https://www.youtube.com/watch?v=VIDEO_ID
+    - https://youtu.be/VIDEO_ID
+    - https://www.youtube.com/embed/VIDEO_ID
+    - https://www.youtube.com/shorts/VIDEO_ID
+    - https://m.youtube.com/watch?v=VIDEO_ID
+    """
+    if not url:
+        return None
+    patterns = [
+        r"(?:v=|\/embed\/|\/shorts\/|youtu\.be\/|\/v\/|^)([a-zA-Z0-9_-]{11})(?:[&?\/]|$)",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, url)
+        if m:
+            return m.group(1)
+    return None
+
+
 @router.post("/import-url", response_model=VideoResponse)
 def import_video_url(
     body: URLImportRequest,
@@ -134,10 +155,122 @@ def import_video_url(
 
     import urllib.parse
     import urllib.request
+    import json
 
     url = body.url.strip()
     if not url.startswith("http://") and not url.startswith("https://"):
         raise HTTPException(status_code=400, detail="Invalid URL protocol. Must start with http:// or https://")
+
+    # ------------------------------------------------------------------
+    # NATIVE YOUTUBE INGESTION PIPELINE (Fast, Cloud-Immune to Bot Blocks)
+    # ------------------------------------------------------------------
+    youtube_id = extract_youtube_id(url)
+    if youtube_id:
+        logger.info(f"Initiating native YouTube ingestion for video ID: {youtube_id}")
+        extracted_title = body.title or ""
+
+        # 1. Fetch metadata via YouTube oEmbed
+        try:
+            oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={youtube_id}&format=json"
+            oe_req = urllib.request.Request(oembed_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(oe_req, timeout=8) as resp:
+                oe_data = json.loads(resp.read().decode("utf-8"))
+                if not extracted_title:
+                    extracted_title = oe_data.get("title") or "YouTube Video"
+        except Exception as oe_err:
+            logger.warning(f"Could not fetch YouTube oEmbed info: {oe_err}")
+            if not extracted_title:
+                extracted_title = f"YouTube Video ({youtube_id})"
+
+        # 2. Extract transcript directly via youtube-transcript-api
+        segments = []
+        transcript_text = ""
+        duration_seconds = 0.0
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+            api = YouTubeTranscriptApi()
+            try:
+                transcript_data = api.fetch(youtube_id)
+            except AttributeError:
+                transcript_data = YouTubeTranscriptApi.get_transcript(youtube_id)
+
+            for snippet in transcript_data:
+                if hasattr(snippet, "text"):
+                    t = snippet.text
+                    s = float(snippet.start)
+                    d = float(snippet.duration)
+                else:
+                    t = snippet.get("text", "")
+                    s = float(snippet.get("start", 0))
+                    d = float(snippet.get("duration", 0))
+                t = t.replace("\n", " ").strip()
+                if t:
+                    segments.append({"start": round(s, 2), "end": round(s + d, 2), "text": t})
+
+            if segments:
+                transcript_text = " ".join(s["text"] for s in segments)
+                duration_seconds = round(segments[-1]["end"], 2)
+        except Exception as yt_tx_err:
+            logger.warning(f"youtube-transcript-api extraction notice: {yt_tx_err}")
+
+        # If transcript was successfully extracted, run Groq AI summarization and key moments immediately!
+        if segments and transcript_text:
+            try:
+                summaries_res = generate_summaries_and_keywords(
+                    title=extracted_title,
+                    transcript_text=transcript_text,
+                    segments=segments,
+                )
+            except Exception as sum_err:
+                logger.error(f"Error generating AI summaries: {sum_err}")
+                summaries_res = {"short_summary": "Summary generation in progress.", "detailed_summary": "", "keywords": []}
+
+            try:
+                key_moments = extract_key_moments(
+                    segments=segments,
+                    duration_seconds=duration_seconds,
+                )
+            except Exception as km_err:
+                logger.error(f"Error extracting key moments: {km_err}")
+                key_moments = []
+
+            video_id = uuid.uuid4()
+            canonical_url = f"https://www.youtube.com/watch?v={youtube_id}"
+            new_video = Video(
+                id=video_id,
+                uploaded_by=current_user.id,
+                title=extracted_title,
+                original_filename=f"youtube_{youtube_id}.mp4",
+                storage_path=canonical_url,
+                duration_seconds=duration_seconds,
+                format="YOUTUBE",
+                file_size_bytes=0,
+                status=VideoStatus.completed,
+                visibility=VideoVisibility.public.value,
+                transcript_text=transcript_text,
+                transcript_segments=segments,
+                short_summary=summaries_res.get("short_summary"),
+                detailed_summary=summaries_res.get("detailed_summary"),
+                key_moments=key_moments,
+                keywords=summaries_res.get("keywords") or [],
+                language="en",
+            )
+            try:
+                db.add(new_video)
+                db.flush()
+                log = ActivityLog(
+                    user_id=current_user.id,
+                    action="import_url_video",
+                    extra_data={"video_id": str(video_id), "url": canonical_url, "source": "youtube_native"},
+                )
+                db.add(log)
+                db.commit()
+                db.refresh(new_video)
+                return new_video
+            except Exception as db_err:
+                db.rollback()
+                logger.error(f"Database error saving YouTube video: {db_err}")
+                raise HTTPException(status_code=500, detail=f"Database error: {str(db_err)}")
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     downloaded_file = None
@@ -639,13 +772,14 @@ def process_video(
     db.commit()
 
     try:
-        # Step 1: Transcribe
-        transcription_res = transcribe_video(video.storage_path, duration_seconds=video.duration_seconds or 0)
-        video.transcript_text = transcription_res["text"]
-        video.transcript_segments = transcription_res["segments"]
-        video.language = transcription_res["language"]
-        video.status = VideoStatus.transcribed
-        db.commit()
+        # Step 1: Transcribe (if not already transcribed or ingested from YouTube captions)
+        if not (video.transcript_text and video.transcript_segments):
+            transcription_res = transcribe_video(video.storage_path, duration_seconds=video.duration_seconds or 0)
+            video.transcript_text = transcription_res["text"]
+            video.transcript_segments = transcription_res["segments"]
+            video.language = transcription_res["language"]
+            video.status = VideoStatus.transcribed
+            db.commit()
 
         # Step 2: Summarize & Extract Keywords
         summaries_res = generate_summaries_and_keywords(

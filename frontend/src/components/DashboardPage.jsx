@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
-import { videosApi, analyticsApi } from "../api/client";
+import { videosApi, analyticsApi, getYoutubeId } from "../api/client";
 
 const renderFormattedDetailedSummary = (text) => {
   if (!text || !text.trim()) {
@@ -183,6 +183,7 @@ export default function DashboardPage() {
 
   // Video Player & References
   const videoRef = useRef(null);
+  const ytIframeRef = useRef(null);
   const fileInputRef = useRef(null);
   const selectedVideoRef = useRef(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -324,6 +325,36 @@ export default function DashboardPage() {
   useEffect(() => {
     setVideoError(false);
     setCurrentTime(0);
+
+    const ytId = getYoutubeId(selectedVideo);
+    if (ytId) {
+      const handleYtMessage = (e) => {
+        try {
+          const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+          if (data?.event === "infoDelivery" && data?.info?.currentTime !== undefined) {
+            setCurrentTime(data.info.currentTime);
+          }
+        } catch {}
+      };
+
+      window.addEventListener("message", handleYtMessage);
+
+      // Poll current time from YouTube iframe via postMessage for smooth transcript syncing
+      const pollTimer = setInterval(() => {
+        if (ytIframeRef.current?.contentWindow) {
+          ytIframeRef.current.contentWindow.postMessage(
+            JSON.stringify({ event: "listening", id: "yt-player" }),
+            "*"
+          );
+        }
+      }, 500);
+
+      return () => {
+        window.removeEventListener("message", handleYtMessage);
+        clearInterval(pollTimer);
+      };
+    }
+
     const vid = videoRef.current;
     if (!vid) return;
 
@@ -420,7 +451,14 @@ export default function DashboardPage() {
       await fetchVideos(createdVideo?.id);
       fetchAnalytics();
 
-      if (createdVideo && createdVideo.id) {
+      if (createdVideo && createdVideo.status === "completed") {
+        selectedVideoRef.current = createdVideo;
+        setSelectedVideo(createdVideo);
+        setEditedTranscriptText(createdVideo.transcript_text || "");
+        setActiveTab("details");
+        setProcessMsg("YouTube video processed & ready in Studio!");
+        setTimeout(() => setProcessMsg(""), 3500);
+      } else if (createdVideo && createdVideo.id) {
         handleProcessVideo(createdVideo.id);
       }
     } catch (err) {
@@ -496,7 +534,22 @@ export default function DashboardPage() {
   };
 
   const handleSeekTo = (seconds) => {
-    if (videoRef.current) {
+    const ytId = getYoutubeId(selectedVideo);
+    if (ytId && ytIframeRef.current?.contentWindow) {
+      try {
+        ytIframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ event: "command", func: "seekTo", args: [seconds, true] }),
+          "*"
+        );
+        ytIframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ event: "command", func: "playVideo", args: [] }),
+          "*"
+        );
+      } catch (err) {
+        console.error("YouTube seek error:", err);
+      }
+      setCurrentTime(seconds);
+    } else if (videoRef.current) {
       videoRef.current.currentTime = seconds;
       videoRef.current.play();
     }
@@ -1306,13 +1359,21 @@ export default function DashboardPage() {
                       }`}
                     >
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-1 min-w-0">
-                        {/* Media Box / Video Thumbnail Placeholder */}
+                        {/* Media Box / Video Thumbnail */}
                         <div className="w-full sm:w-36 h-22 bg-[#0E121F] rounded-lg shrink-0 relative flex items-center justify-center border border-white/[0.08] group-hover:border-white/[0.16] transition-colors overflow-hidden">
-                          <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                            <svg className="w-3.5 h-3.5 fill-current translate-x-0.5" viewBox="0 0 24 24">
-                              <path d="M8 5v14l11-7z" />
-                            </svg>
-                          </div>
+                          {getYoutubeId(vid) ? (
+                            <img
+                              src={`https://img.youtube.com/vi/${getYoutubeId(vid)}/mqdefault.jpg`}
+                              alt={vid.title}
+                              className="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                              <svg className="w-3.5 h-3.5 fill-current translate-x-0.5" viewBox="0 0 24 24">
+                                <path d="M8 5v14l11-7z" />
+                              </svg>
+                            </div>
+                          )}
                           <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 bg-[#0B0D14]/90 text-cyan-400 font-mono text-[10px] font-semibold rounded border border-white/[0.08]">
                             {formatDuration(vid.duration_seconds)}
                           </span>
@@ -1378,7 +1439,11 @@ export default function DashboardPage() {
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 font-mono">
-                            <span>{formatBytes(vid.file_size_bytes)}</span>
+                            {getYoutubeId(vid) ? (
+                              <span className="text-indigo-400 font-medium font-sans">YouTube Stream</span>
+                            ) : (
+                              <span>{formatBytes(vid.file_size_bytes)}</span>
+                            )}
                             <span className="text-slate-600">·</span>
                             <span>{new Date(vid.created_at).toLocaleDateString()}</span>
                             {vid.uploaded_by !== user?.id && (
@@ -1607,7 +1672,18 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="bg-black rounded-lg overflow-hidden flex-1 min-h-0 flex items-center justify-center border border-white/[0.08] relative">
-                    {videoError ? (
+                    {getYoutubeId(selectedVideo) ? (
+                      <iframe
+                        key={getYoutubeId(selectedVideo)}
+                        ref={ytIframeRef}
+                        id="yt-player"
+                        className="w-full h-full rounded-lg border-0"
+                        src={`https://www.youtube-nocookie.com/embed/${getYoutubeId(selectedVideo)}?enablejsapi=1&origin=${typeof window !== "undefined" ? window.location.origin : ""}&rel=0`}
+                        title={selectedVideo.title}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    ) : videoError ? (
                       <div className="p-6 text-center flex flex-col items-center justify-center space-y-2.5">
                         <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center">
                           <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
