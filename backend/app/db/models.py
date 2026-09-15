@@ -1,5 +1,7 @@
+from __future__ import annotations
 import uuid
 import enum
+from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Float, BigInteger, DateTime, ForeignKey, Enum, Text, JSON
 from sqlalchemy.types import TypeDecorator, CHAR
