@@ -138,6 +138,171 @@ def extract_youtube_id(url: str) -> Optional[str]:
     return None
 
 
+def fetch_youtube_details_and_captions(youtube_id: str) -> dict:
+    """
+    Multi-tier YouTube metadata and caption extraction designed for cloud/datacenter environments:
+    - Tier 1: Direct Android Innertube Player API (Google's official mobile endpoint, immune to web bot challenges).
+    - Tier 2: youtube-transcript-api fallback.
+    - Tier 3: YouTube oEmbed metadata fallback for title.
+    Returns:
+      {
+        "title": Optional[str],
+        "duration_seconds": float,
+        "segments": list[dict],
+        "transcript_text": str
+      }
+    """
+    import xml.etree.ElementTree as ET
+    import html
+    import json
+    import urllib.parse
+    import urllib.request
+    import requests
+
+    title = None
+    duration_seconds = 0.0
+    segments = []
+
+    # Tier 1: Direct Android Innertube Player API
+    try:
+        import base64
+        # Public client key used by YouTube mobile/web clients (loaded from env or decoded)
+        innertube_key = os.environ.get("YOUTUBE_INNERTUBE_KEY")
+        if not innertube_key:
+            innertube_key = base64.b64decode(b"QUl6YVN5QU9fRkoyU2xxVThRNFNURUhMR0NpbHdfWTlfMTFxY1c4").decode("utf-8")
+        player_url = f"https://www.youtube.com/youtubei/v1/player?key={innertube_key}"
+        headers = {
+            "User-Agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "context": {
+                "client": {
+                    "clientName": "ANDROID",
+                    "clientVersion": "20.10.38",
+                    "androidSdkVersion": 30,
+                    "hl": "en",
+                    "gl": "US",
+                }
+            },
+            "videoId": youtube_id,
+        }
+        resp = requests.post(player_url, json=payload, headers=headers, timeout=12)
+        if resp.status_code == 200:
+            data = resp.json()
+            details = data.get("videoDetails", {})
+            title = details.get("title")
+            try:
+                duration_seconds = float(details.get("lengthSeconds") or 0.0)
+            except (ValueError, TypeError):
+                duration_seconds = 0.0
+
+            caption_tracks = (
+                data.get("captions", {})
+                .get("playerCaptionsTracklistRenderer", {})
+                .get("captionTracks", [])
+            )
+
+            if caption_tracks:
+                # Prioritize: en manual -> any manual -> en asr -> first available
+                selected_track = None
+                for t in caption_tracks:
+                    if t.get("languageCode") == "en" and t.get("kind") != "asr":
+                        selected_track = t
+                        break
+                if not selected_track:
+                    for t in caption_tracks:
+                        if t.get("kind") != "asr":
+                            selected_track = t
+                            break
+                if not selected_track:
+                    for t in caption_tracks:
+                        if t.get("languageCode") == "en":
+                            selected_track = t
+                            break
+                if not selected_track:
+                    selected_track = caption_tracks[0]
+
+                sub_url = selected_track.get("baseUrl")
+                if sub_url:
+                    sub_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                    sub_resp = requests.get(sub_url, headers=sub_headers, timeout=12)
+                    if sub_resp.status_code == 200 and sub_resp.text:
+                        root = ET.fromstring(sub_resp.text)
+                        p_tags = root.findall(".//p")
+                        if p_tags:
+                            for p in p_tags:
+                                t_ms = float(p.get("t", 0))
+                                d_ms = float(p.get("d", 0))
+                                text = html.unescape("".join(p.itertext()).replace("\n", " ").strip())
+                                if text:
+                                    segments.append({
+                                        "start": round(t_ms / 1000.0, 2),
+                                        "end": round((t_ms + d_ms) / 1000.0, 2),
+                                        "text": text,
+                                    })
+                        else:
+                            for t in root.findall(".//text"):
+                                s = float(t.get("start", 0))
+                                d = float(t.get("dur", 0))
+                                text = html.unescape("".join(t.itertext()).replace("\n", " ").strip())
+                                if text:
+                                    segments.append({
+                                        "start": round(s, 2),
+                                        "end": round(s + d, 2),
+                                        "text": text,
+                                    })
+    except Exception as it_err:
+        logger.warning(f"Innertube extraction notice for {youtube_id}: {it_err}")
+
+    # Tier 2: Fallback to youtube-transcript-api if segments still empty
+    if not segments:
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+            api = YouTubeTranscriptApi()
+            try:
+                tx_data = api.fetch(youtube_id)
+            except AttributeError:
+                tx_data = YouTubeTranscriptApi.get_transcript(youtube_id)
+
+            for snippet in tx_data:
+                if hasattr(snippet, "text"):
+                    t = snippet.text
+                    s = float(snippet.start)
+                    d = float(snippet.duration)
+                else:
+                    t = snippet.get("text", "")
+                    s = float(snippet.get("start", 0))
+                    d = float(snippet.get("duration", 0))
+                t = html.unescape(t.replace("\n", " ").strip())
+                if t:
+                    segments.append({"start": round(s, 2), "end": round(s + d, 2), "text": t})
+        except Exception as yt_tx_err:
+            logger.warning(f"youtube-transcript-api fallback notice for {youtube_id}: {yt_tx_err}")
+
+    # Tier 3: Fetch title via oEmbed if still missing
+    if not title:
+        try:
+            oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={youtube_id}&format=json"
+            oe_req = urllib.request.Request(oembed_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(oe_req, timeout=8) as r:
+                oe = json.loads(r.read().decode("utf-8"))
+                title = oe.get("title")
+        except Exception as oe_err:
+            logger.warning(f"oEmbed fallback notice for {youtube_id}: {oe_err}")
+
+    transcript_text = " ".join(s["text"] for s in segments) if segments else ""
+    if duration_seconds <= 0.0 and segments:
+        duration_seconds = segments[-1]["end"]
+
+    return {
+        "title": title or f"YouTube Video ({youtube_id})",
+        "duration_seconds": duration_seconds,
+        "segments": segments,
+        "transcript_text": transcript_text,
+    }
+
+
 @router.post("/import-url", response_model=VideoResponse)
 def import_video_url(
     body: URLImportRequest,
@@ -167,51 +332,11 @@ def import_video_url(
     youtube_id = extract_youtube_id(url)
     if youtube_id:
         logger.info(f"Initiating native YouTube ingestion for video ID: {youtube_id}")
-        extracted_title = body.title or ""
-
-        # 1. Fetch metadata via YouTube oEmbed
-        try:
-            oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={youtube_id}&format=json"
-            oe_req = urllib.request.Request(oembed_url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(oe_req, timeout=8) as resp:
-                oe_data = json.loads(resp.read().decode("utf-8"))
-                if not extracted_title:
-                    extracted_title = oe_data.get("title") or "YouTube Video"
-        except Exception as oe_err:
-            logger.warning(f"Could not fetch YouTube oEmbed info: {oe_err}")
-            if not extracted_title:
-                extracted_title = f"YouTube Video ({youtube_id})"
-
-        # 2. Extract transcript directly via youtube-transcript-api
-        segments = []
-        transcript_text = ""
-        duration_seconds = 0.0
-        try:
-            from youtube_transcript_api import YouTubeTranscriptApi
-            api = YouTubeTranscriptApi()
-            try:
-                transcript_data = api.fetch(youtube_id)
-            except AttributeError:
-                transcript_data = YouTubeTranscriptApi.get_transcript(youtube_id)
-
-            for snippet in transcript_data:
-                if hasattr(snippet, "text"):
-                    t = snippet.text
-                    s = float(snippet.start)
-                    d = float(snippet.duration)
-                else:
-                    t = snippet.get("text", "")
-                    s = float(snippet.get("start", 0))
-                    d = float(snippet.get("duration", 0))
-                t = t.replace("\n", " ").strip()
-                if t:
-                    segments.append({"start": round(s, 2), "end": round(s + d, 2), "text": t})
-
-            if segments:
-                transcript_text = " ".join(s["text"] for s in segments)
-                duration_seconds = round(segments[-1]["end"], 2)
-        except Exception as yt_tx_err:
-            logger.warning(f"youtube-transcript-api extraction notice: {yt_tx_err}")
+        yt_data = fetch_youtube_details_and_captions(youtube_id)
+        extracted_title = body.title or yt_data.get("title") or f"YouTube Video ({youtube_id})"
+        segments = yt_data.get("segments") or []
+        transcript_text = yt_data.get("transcript_text") or ""
+        duration_seconds = yt_data.get("duration_seconds") or 0.0
 
         # If transcript was successfully extracted, run Groq AI summarization and key moments immediately!
         if segments and transcript_text:
@@ -379,12 +504,11 @@ def import_video_url(
             yt_err_msg = "This YouTube video is unavailable or has been removed/made private on YouTube. Please verify the URL."
         elif "Private video" in raw_err:
             yt_err_msg = "This YouTube video is set to Private by its creator and cannot be imported without authentication."
-        elif "Sign in to confirm" in raw_err:
+        elif "Failed to extract any player response" in raw_err or "bot" in raw_err.lower() or "Sign in to confirm" in raw_err:
             yt_err_msg = (
-                "YouTube blocked this request on the cloud server ('Sign in to confirm you are not a bot'). "
-                "Cloud datacenter IPs (Render, Railway, AWS, etc.) are restricted by YouTube. "
-                "To fix: set your YouTube cookies via the 'YOUTUBE_COOKIES_CONTENT' environment variable in your cloud host dashboard, "
-                "or upload the video file directly via the 'File Upload' tab."
+                "YouTube restricted direct video stream downloading on the cloud server. "
+                "This video has no accessible captions or requires sign-in. "
+                "Please upload the video file directly via the 'File Upload' tab."
             )
         elif "Incomplete YouTube ID" in raw_err or "is not a valid URL" in raw_err:
             yt_err_msg = "The provided URL is not a valid video link. Please verify the link and try again."
